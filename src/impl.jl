@@ -1,10 +1,24 @@
-using Strided
-
 const eTbackend = TensorOperations.Backend{:eTbackend}
+
+include("eT_utils.jl")
 
 TensorOperations.scalartype(::Pair) = Float64
 
 n_intermediates::Int = 0
+
+code_body::IOBuffer = IOBuffer()
+output_parameters::Vector{Tuple{String,Int,String}} = Tuple{String,Int,String}[]
+input_parameters::Vector{Tuple{String,Int,String}} = Tuple{String,Int,String}[]
+local_variables::Vector{Tuple{String,Int,String}} = Tuple{String,Int,String}[]
+
+function reset_state()
+    global n_intermediates
+    n_intermediates = 0
+    take!(code_body)
+    empty!(output_parameters)
+    empty!(input_parameters)
+    empty!(local_variables)
+end
 
 function get_intermediate_name(structure)
     global n_intermediates
@@ -12,9 +26,8 @@ function get_intermediate_name(structure)
     "X$(n_intermediates)_" * prod(String, structure)
 end
 
-function reset_state()
-    global n_intermediates
-    n_intermediates = 0
+function finalize_eT_function()
+    println(String(take!(code_body)))
 end
 
 function TensorOperations.tensoradd_structure(pC, A::Pair, conjA)
@@ -40,6 +53,64 @@ function TensorOperations.tensoradd!(C, pC,
     println("\nAdding: C = α * A + β * C")
     @show A C α β pC
     println()
+
+    p = linearize(pC)
+
+    nA, sA = A
+    nC, sC = C
+
+    counts = Dict{String,Int}()
+    for x in sA
+        counts[x] = get(counts, x, 0) + 1
+    end
+
+    dimbuf = IOBuffer()
+
+    isfirst = true
+    for (d, c) in counts
+        if isfirst
+            isfirst = false
+        else
+            print(dimbuf, "*")
+        end
+        print(dimbuf, eT_dim_dict[d])
+        if c > 1
+            print(dimbuf, "**", c)
+        end
+    end
+
+    dimstr = String(take!(dimbuf))
+
+    if iszero(β)
+        println(code_body, "      call zero_array($nA, $dimstr)")
+    elseif !isone(β)
+        println(code_body, "      call dscal($dimstr, $(make_eT_num(β)), $nA, 1)")
+    end
+
+    if issorted(p)
+        if isone(α) && iszero(β)
+            println(code_body, "      call dcopy($dimstr, $nA, 1, $nC, 1)")
+        else
+            println(code_body, "      call daxpy($dimstr, $(make_eT_num(α)), $nA, 1, $nC, 1)")
+        end
+    else
+        if isone(α) && iszero(β)
+            pstr = prod(string, p)
+            println(code_body, "      call sort_to_$pstr($nA, $nC")
+            for d in sA
+                print(code_body, ", ", eT_dim_dict[d])
+            end
+            println(code_body, ")")
+        else
+            pstr = prod(string, invperm(p))
+            pstr_sort = prod(string, 1:length(p))
+            print(code_body, "      call add_$(pstr)_to_$pstr_sort($(make_eT_num(α)), $nA, $nC")
+            for d in sC
+                print(code_body, ", ", eT_dim_dict[d])
+            end
+            println(code_body, ")")
+        end
+    end
 
     C
 end

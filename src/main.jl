@@ -30,3 +30,23 @@ function test2()
 
     @tensor backend=eTbackend C[a, i] := g[a, b, j, j] * t1[b, i]
 end
+
+function test3()
+    A = "A" => (:v, :o, :v, :o)
+    B = "B" => (:o, :v, :o, :v)
+    C = "C" => (:o, :o, :o, :o)
+
+    reset_state()
+
+    @tensor backend=eTbackend C[i, j, k, l] = A[a, j, b, i] * B[k, b, l, a]
+end
+
+function test4()
+    A = "A" => ("v", "o", "v", "o")
+    B = "B" => ("v", "v", "o", "o")
+    C = "C" => ("v", "o", "v", "o")
+
+    reset_state()
+
+    @tensor backend=eTbackend C[a, i, b, j] = A[a, i, b, j] - 2 * B[a, b, j, i]
+end
