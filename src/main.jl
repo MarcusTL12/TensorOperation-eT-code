@@ -50,3 +50,14 @@ function test4()
 
     @tensor backend=eTbackend C[a, i, b, j] = A[a, i, b, j] - 2 * B[a, b, j, i]
 end
+
+function test5()
+    A = "A" => (:o, :v)
+    B = "B" => (:v, :o)
+    C = "C" => (:o, :v)
+    D = "D" => (:o, :v)
+
+    reset_state()
+
+    @tensor backend=eTbackend D[i, a] = A[i, b] * B[b, j] * C[j, a]
+end

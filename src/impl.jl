@@ -35,6 +35,12 @@ function TensorOperations.tensoradd_structure(pC, A::Pair, conjA)
     return sA[collect(linearize(pC))]
 end
 
+function TensorOperations.tensorfree!(C::Pair)
+    nC, sC = C
+
+    println("Deallocating tensor $nC")
+end
+
 function TensorOperations.tensoralloc_add(TC, pC, A::Pair, conjA, istemp=false,
     backend::TensorOperations.Backend...)
     structure = TensorOperations.tensoradd_structure(pC, A, conjA)
