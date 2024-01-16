@@ -8,7 +8,7 @@ eT_dim_dict::Dict{String,String} = Dict{String,String}([
 
 function make_eT_num(x)
     isneg = false
-    if x isa Number
+    if x isa Float64 || x isa Integer
         isneg = x < 0
         if isneg
             x = -x

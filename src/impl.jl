@@ -81,9 +81,9 @@ function TensorOperations.tensoradd!(C, pC,
 
     dimstr = String(take!(dimbuf))
 
-    if iszero(β)
-        println(code_body, "      call zero_array($nA, $dimstr)")
-    elseif !isone(β)
+    if iszero(β) && !isone(α)
+        println(code_body, "      call zero_array($nC, $dimstr)")
+    elseif !isone(β) && !isone(α)
         println(code_body, "      call dscal($dimstr, $(make_eT_num(β)), $nA, 1)")
     end
 
