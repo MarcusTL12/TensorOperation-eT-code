@@ -87,3 +87,25 @@ function test7()
 
     @tensor opt=(a, b) backend=eTbackend D[i, a] = γ * A[a, i] * B[b, j] * C[j, b]
 end
+
+function test8()
+    A = "A" => ("v", "o", "v", "o")
+    B = "B" => ("v", "o", "v", "v")
+    C = "C" => ("o", "o", "v", "v")
+    D = "D" => ("o", "v")
+
+    reset_state()
+
+    @tensor opt=(a, b, c, d, i, j, k) backend=eTbackend D[i, a] = A[a, j, b, k] * B[b, k, c, d] * C[i, j, c, d]
+end
+
+function test9()
+    A = "A" => ("v", "o", "v", "o")
+    B = "B" => ("o", "v", "v", "v")
+    C = "C" => ("o", "o", "v", "v")
+    D = "D" => ("o", "v")
+
+    reset_state()
+
+    @tensor opt=(a, b, c, d, i, j, k) backend=eTbackend D[i, a] = A[a, j, b, k] * B[k, b, c, d] * C[i, j, c, d]
+end

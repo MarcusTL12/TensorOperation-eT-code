@@ -1,3 +1,5 @@
+using TupleTools
+
 const eTbackend = TensorOperations.Backend{:eTbackend}
 
 include("eT_utils.jl")
@@ -32,15 +34,11 @@ end
 function get_intermediate_name(structure)
     global n_intermediates
     n_intermediates += 1
-    name = if isempty(structure)
+    if isempty(structure)
         "X$(n_intermediates)"
     else
         "X$(n_intermediates)_" * prod(String, structure)
     end
-
-    push!(local_variables, (name, length(structure)))
-
-    name
 end
 
 function finalize_eT_function()
@@ -74,6 +72,10 @@ function eT_alloc(A::Pair)
         end
         println(code_body, ")")
     end
+
+    if (nA, length(sA)) ∉ local_variables
+        push!(local_variables, (nA, length(sA)))
+    end
 end
 
 function TensorOperations.tensoralloc_add(TC, pC, A::Pair, conjA, istemp=false,
@@ -84,6 +86,30 @@ function TensorOperations.tensoralloc_add(TC, pC, A::Pair, conjA, istemp=false,
     eT_alloc(name => structure)
 
     name => structure
+end
+
+function get_dimstr(structure)
+    counts = Dict{String,Int}()
+    for x in structure
+        counts[x] = get(counts, x, 0) + 1
+    end
+
+    dimbuf = IOBuffer()
+
+    isfirst = true
+    for (d, c) in counts
+        if isfirst
+            isfirst = false
+        else
+            print(dimbuf, "*")
+        end
+        print(dimbuf, eT_dim_dict[d])
+        if c > 1
+            print(dimbuf, "**", c)
+        end
+    end
+
+    dimstr = String(take!(dimbuf))
 end
 
 function TensorOperations.tensoradd!(C, pC,
@@ -111,27 +137,7 @@ function TensorOperations.tensoradd!(C, pC,
         push!(output_parameters, C)
     end
 
-    counts = Dict{String,Int}()
-    for x in sA
-        counts[x] = get(counts, x, 0) + 1
-    end
-
-    dimbuf = IOBuffer()
-
-    isfirst = true
-    for (d, c) in counts
-        if isfirst
-            isfirst = false
-        else
-            print(dimbuf, "*")
-        end
-        print(dimbuf, eT_dim_dict[d])
-        if c > 1
-            print(dimbuf, "**", c)
-        end
-    end
-
-    dimstr = String(take!(dimbuf))
+    dimstr = get_dimstr(sA)
 
     if iszero(β) && !isone(α)
         println(code_body, "      call zero_array($nC, $dimstr)")
@@ -148,7 +154,7 @@ function TensorOperations.tensoradd!(C, pC,
     else
         if isone(α) && iszero(β)
             pstr = prod(string, p)
-            println(code_body, "      call sort_to_$pstr($nA, $nC")
+            print(code_body, "      call sort_to_$pstr($nA, $nC")
             for d in sA
                 print(code_body, ", ", eT_dim_dict[d])
             end
@@ -214,6 +220,75 @@ function TensorOperations.tensorcontract!(C, pC,
     println("\nContracting C = α * contract(A, B) + β * C")
     @show A B C α β pA pB pC
     println()
+
+    nA, sA = A
+    nB, sB = B
+    nC, sC = C
+
+    ipC = invperm(linearize(pC))
+
+    sC_pre = TupleTools.getindices(sC, ipC)
+
+    C_pre = if !issorted(linearize(pC))
+        println("Output not sorted, need to allocate tmp output!")
+
+        nC_pre = nC * "_" * prod(string, ipC)
+
+        tmp = nC_pre => sC_pre
+
+        eT_alloc(tmp)
+
+        tmp
+    else
+        C
+    end
+
+    nC_out, sC_out = C_pre
+
+    A_loc = (nA, length(sA))
+    B_loc = (nB, length(sB))
+    C_loc = (nC, length(sC))
+
+    if A_loc ∉ local_variables && A ∉ input_parameters
+        push!(input_parameters, A)
+    end
+
+    if B_loc ∉ local_variables && B ∉ input_parameters
+        push!(input_parameters, B)
+    end
+
+    if C_loc ∉ local_variables && C ∉ output_parameters
+        push!(output_parameters, C)
+    end
+
+    # Doing the contraction
+
+    outdimA = get_dimstr(TupleTools.getindices(sA, pA[1]))
+    outdimB = get_dimstr(TupleTools.getindices(sB, pB[2]))
+    contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
+
+    println(
+        code_body,
+        """
+!
+      call dgemm('N', 'N', &
+                 $outdimA, &
+                 $outdimB, &
+                 $contdim, &
+                 $(make_eT_num(α)), &
+                 $nA, 1, &
+                 $nB, 1, &
+                 $(make_eT_num(β)), &
+                 $nC_out, 1)
+!""")
+
+    if !issorted(linearize(pC))
+        println("Output not sorted, need to sort from tmp output to actual output!")
+
+        TensorOperations.tensoradd!(C, pC, C_pre, :N, 1, 0, backend)
+
+        TensorOperations.tensorfree!(C_pre)
+    end
 
     C
 end
