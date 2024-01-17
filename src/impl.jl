@@ -3,6 +3,10 @@ const eTbackend = TensorOperations.Backend{:eTbackend}
 include("eT_utils.jl")
 
 TensorOperations.scalartype(::Pair) = Float64
+function TensorOperations.tensorscalar(p::Pair)
+    n, s = p
+    n
+end
 
 n_intermediates::Int = 0
 
@@ -23,7 +27,11 @@ end
 function get_intermediate_name(structure)
     global n_intermediates
     n_intermediates += 1
-    "X$(n_intermediates)_" * prod(String, structure)
+    if isempty(structure)
+        "X$(n_intermediates)"
+    else
+        "X$(n_intermediates)_" * prod(String, structure)
+    end
 end
 
 function finalize_eT_function()
@@ -39,6 +47,24 @@ function TensorOperations.tensorfree!(C::Pair)
     nC, sC = C
 
     println("Deallocating tensor $nC")
+
+    if !isempty(sC)
+        println(code_body, "      call mem%dealloc($nC)")
+    end
+end
+
+function eT_alloc(A::Pair)
+    nA, sA = A
+
+    println("Allocating intermediate $nA with size $sA")
+
+    if !isempty(sA)
+        print(code_body, "      call mem%alloc($nA")
+        for d in sA
+            print(code_body, ", ", eT_dim_dict[d])
+        end
+        println(code_body, ")")
+    end
 end
 
 function TensorOperations.tensoralloc_add(TC, pC, A::Pair, conjA, istemp=false,
@@ -46,7 +72,7 @@ function TensorOperations.tensoralloc_add(TC, pC, A::Pair, conjA, istemp=false,
     structure = TensorOperations.tensoradd_structure(pC, A, conjA)
     name = get_intermediate_name(structure)
 
-    println("Allocating intermediate $name with size $structure")
+    eT_alloc(name => structure)
 
     name => structure
 end
@@ -154,7 +180,7 @@ function TensorOperations.tensoralloc_contract(TC, pC, A::Pair, pA, conjA, B::Pa
     structure = TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)
     name = get_intermediate_name(structure)
 
-    println("Allocating intermediate $name with size $structure")
+    eT_alloc(name => structure)
 
     name => structure
 end

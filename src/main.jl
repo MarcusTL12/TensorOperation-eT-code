@@ -12,9 +12,9 @@ function test()
 end
 
 function test_sym()
-    A = "A" => (:o, :v)
-    B = "B" => (:v, :o)
-    C = "C" => (:o, :o)
+    A = "A" => ("o", "v")
+    B = "B" => ("v", "o")
+    C = "C" => ("o", "o")
 
     reset_state()
 
@@ -22,9 +22,9 @@ function test_sym()
 end
 
 function test2()
-    g = "g" => (:v, :v, :o, :o)
-    t1 = "t1" => (:v, :o)
-    h_ov = "h" => (:o, :v)
+    g = "g" => ("v", "v", "o", "o")
+    t1 = "t1" => ("v", "o")
+    h_ov = "h" => ("o", "v")
 
     reset_state()
 
@@ -32,9 +32,9 @@ function test2()
 end
 
 function test3()
-    A = "A" => (:v, :o, :v, :o)
-    B = "B" => (:o, :v, :o, :v)
-    C = "C" => (:o, :o, :o, :o)
+    A = "A" => ("v", "o", "v", "o")
+    B = "B" => ("o", "v", "o", "v")
+    C = "C" => ("o", "o", "o", "o")
 
     reset_state()
 
@@ -52,12 +52,23 @@ function test4()
 end
 
 function test5()
-    A = "A" => (:o, :v)
-    B = "B" => (:v, :o)
-    C = "C" => (:o, :v)
-    D = "D" => (:o, :v)
+    A = "A" => ("o", "v")
+    B = "B" => ("v", "o")
+    C = "C" => ("o", "v")
+    D = "D" => ("o", "v")
 
     reset_state()
 
     @tensor backend=eTbackend D[i, a] = A[i, b] * B[b, j] * C[j, a]
+end
+
+function test6()
+    A = "A" => ("o", "v")
+    B = "B" => ("v", "o")
+    C = "C" => ("o", "v")
+    D = "D" => ("o", "v")
+
+    reset_state()
+
+    @tensor opt=(a, b) backend=eTbackend D[i, a] = A[i, a] * B[b, j] * C[j, b]
 end
