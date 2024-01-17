@@ -211,6 +211,32 @@ function TensorOperations.tensoralloc_contract(TC, pC, A::Pair, pA, conjA, B::Pa
     name => structure
 end
 
+function sort_tensor_input(A, pA, backend)
+    nA, sA = A
+
+    if issorted(linearize(pA))
+        println("$A is sorted")
+        A, false
+    elseif issorted(linearize(reverse(pA)))
+        println("$A is transposed")
+        A, true
+    else !issorted(linearize(pA))
+        println("$A not sorted, need to allocate tmp storage")
+
+        # TODO: Check if using T leads to cheaper sort
+
+        nA_sort = nA * "_" * prod(string, linearize(pA))
+
+        sA_sort = TupleTools.getindices(sA, linearize(pA))
+
+        eT_alloc(nA_sort => sA_sort)
+
+        TensorOperations.tensoradd!(nA_sort => sA_sort, pA, A, :N, 1, 0, backend)
+
+        (nA_sort => sA_sort), false
+    end
+end
+
 function TensorOperations.tensorcontract!(C, pC,
     A, pA, conjA,
     B, pB, conjB,
@@ -228,41 +254,11 @@ function TensorOperations.tensorcontract!(C, pC,
     ipA = invperm(linearize(pA))
     ipB = invperm(linearize(pB))
 
-    # Checking if A must be sorted
-    A_sort = if !issorted(linearize(pA))
-        println("A not sorted, need to allocate tmp A!")
-
-        nA_sort = nA * "_" * prod(string, linearize(pA))
-
-        sA_sort = TupleTools.getindices(sA, linearize(pA))
-
-        eT_alloc(nA_sort => sA_sort)
-
-        TensorOperations.tensoradd!(nA_sort => sA_sort, pA, A, :N, 1, 0, backend)
-
-        nA_sort => sA_sort
-    else
-        A
-    end
+    A_sort, A_T = sort_tensor_input(A, pA, backend)
 
     nA_sort, sA_sort = A_sort
 
-    # Checking if A must be sorted
-    B_sort = if !issorted(linearize(pB))
-        println("B not sorted, need to allocate tmp B!")
-
-        nB_sort = nB * "_" * prod(string, linearize(pB))
-
-        sB_sort = TupleTools.getindices(sB, linearize(pB))
-
-        eT_alloc(nB_sort => sB_sort)
-
-        TensorOperations.tensoradd!(nB_sort => sB_sort, pB, B, :N, 1, 0, backend)
-
-        nB_sort => sB_sort
-    else
-        B
-    end
+    B_sort, B_T = sort_tensor_input(B, pB, backend)
 
     nB_sort, sB_sort = B_sort
 
@@ -308,15 +304,18 @@ function TensorOperations.tensorcontract!(C, pC,
     outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
     contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
 
-    lda = get_dimstr(TupleTools.getindices(sA_sort, pA[1]))
-    ldb = get_dimstr(TupleTools.getindices(sB_sort, pB[1]))
+    lda = get_dimstr(TupleTools.getindices(sA_sort, pA[A_T ? 2 : 1]))
+    ldb = get_dimstr(TupleTools.getindices(sB_sort, pB[B_T ? 2 : 1]))
     ldc = outdim1
+
+    A_T_str = A_T ? "'T'" : "'N'";
+    B_T_str = B_T ? "'T'" : "'N'";
 
     println(
         code_body,
         """
 !
-      call dgemm('N', 'N', &
+      call dgemm($A_T_str, $B_T_str, &
                  $outdim1, &
                  $outdim2, &
                  $contdim, &
@@ -331,7 +330,7 @@ function TensorOperations.tensorcontract!(C, pC,
 !""")
 
     if !issorted(linearize(pC))
-        println("Output not sorted, need to sort from tmp output to actual output!")
+        println("Sorting output")
 
         TensorOperations.tensoradd!(C, pC, C_pre, :N, 1, 0, backend)
 
