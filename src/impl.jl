@@ -225,20 +225,61 @@ function TensorOperations.tensorcontract!(C, pC,
     nB, sB = B
     nC, sC = C
 
-    ipC = invperm(linearize(pC))
+    ipA = invperm(linearize(pA))
+    ipB = invperm(linearize(pB))
 
-    sC_pre = TupleTools.getindices(sC, ipC)
+    # Checking if A must be sorted
+    A_sort = if !issorted(linearize(pA))
+        println("A not sorted, need to allocate tmp A!")
+
+        nA_sort = nA * "_" * prod(string, linearize(pA))
+
+        sA_sort = TupleTools.getindices(sA, linearize(pA))
+
+        eT_alloc(nA_sort => sA_sort)
+
+        TensorOperations.tensoradd!(nA_sort => sA_sort, pA, A, :N, 1, 0, backend)
+
+        nA_sort => sA_sort
+    else
+        A
+    end
+
+    nA_sort, sA_sort = A_sort
+
+    # Checking if A must be sorted
+    B_sort = if !issorted(linearize(pB))
+        println("B not sorted, need to allocate tmp B!")
+
+        nB_sort = nB * "_" * prod(string, linearize(pB))
+
+        sB_sort = TupleTools.getindices(sB, linearize(pB))
+
+        eT_alloc(nB_sort => sB_sort)
+
+        TensorOperations.tensoradd!(nB_sort => sB_sort, pB, B, :N, 1, 0, backend)
+
+        nB_sort => sB_sort
+    else
+        B
+    end
+
+    nB_sort, sB_sort = B_sort
+
+    # Checking if output must be sorted
+
+    ipC = invperm(linearize(pC))
 
     C_pre = if !issorted(linearize(pC))
         println("Output not sorted, need to allocate tmp output!")
 
         nC_pre = nC * "_" * prod(string, ipC)
 
-        tmp = nC_pre => sC_pre
+        sC_pre = TupleTools.getindices(sC, ipC)
 
-        eT_alloc(tmp)
+        eT_alloc(nC_pre => sC_pre)
 
-        tmp
+        nC_pre => sC_pre
     else
         C
     end
@@ -263,23 +304,30 @@ function TensorOperations.tensorcontract!(C, pC,
 
     # Doing the contraction
 
-    outdimA = get_dimstr(TupleTools.getindices(sA, pA[1]))
-    outdimB = get_dimstr(TupleTools.getindices(sB, pB[2]))
+    outdim1 = get_dimstr(TupleTools.getindices(sA, pA[1]))
+    outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
     contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
+
+    lda = get_dimstr(TupleTools.getindices(sA_sort, pA[1]))
+    ldb = get_dimstr(TupleTools.getindices(sB_sort, pB[1]))
+    ldc = outdim1
 
     println(
         code_body,
         """
 !
       call dgemm('N', 'N', &
-                 $outdimA, &
-                 $outdimB, &
+                 $outdim1, &
+                 $outdim2, &
                  $contdim, &
                  $(make_eT_num(α)), &
-                 $nA, 1, &
-                 $nB, 1, &
+                 $nA, &
+                 $lda, &
+                 $nB, &
+                 $ldb, &
                  $(make_eT_num(β)), &
-                 $nC_out, 1)
+                 $nC_out, &
+                 $ldc)
 !""")
 
     if !issorted(linearize(pC))
