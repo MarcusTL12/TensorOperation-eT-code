@@ -26,9 +26,11 @@ function test2()
     t1 = "t1" => ("v", "o")
     h_ov = "h" => ("o", "v")
 
+    C = "C" => ("v", "o")
+
     reset_state()
 
-    @tensor backend=eTbackend C[a, i] := g[a, b, j, j] * t1[b, i]
+    @tensor backend=eTbackend C[a, i] = g[a, b, j, j] * t1[b, i]
 end
 
 function test3()
@@ -71,4 +73,17 @@ function test6()
     reset_state()
 
     @tensor opt=(a, b) backend=eTbackend D[i, a] = A[i, a] * B[b, j] * C[j, b]
+end
+
+function test7()
+    A = "A" => ("v", "o")
+    B = "B" => ("v", "o")
+    C = "C" => ("o", "v")
+    D = "D" => ("o", "v")
+
+    γ = "wf%s0" => ()
+
+    reset_state()
+
+    @tensor opt=(a, b) backend=eTbackend D[i, a] = γ * A[a, i] * B[b, j] * C[j, b]
 end

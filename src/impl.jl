@@ -2,18 +2,12 @@ const eTbackend = TensorOperations.Backend{:eTbackend}
 
 include("eT_utils.jl")
 
-TensorOperations.scalartype(::Pair) = Float64
-function TensorOperations.tensorscalar(p::Pair)
-    n, s = p
-    n
-end
-
 n_intermediates::Int = 0
 
 code_body::IOBuffer = IOBuffer()
-output_parameters::Vector{Tuple{String,Int,String}} = Tuple{String,Int,String}[]
-input_parameters::Vector{Tuple{String,Int,String}} = Tuple{String,Int,String}[]
-local_variables::Vector{Tuple{String,Int,String}} = Tuple{String,Int,String}[]
+output_parameters::Vector{Pair} = Pair[]
+input_parameters::Vector{Pair} = Pair[]
+local_variables::Vector{Tuple{String,Int}} = Tuple{String,Int}[]
 
 function reset_state()
     global n_intermediates
@@ -24,14 +18,29 @@ function reset_state()
     empty!(local_variables)
 end
 
+TensorOperations.scalartype(::Pair) = Float64
+function TensorOperations.tensorscalar(p::Pair)
+    n, s = p
+    n
+end
+
+function Base.:*(p::Pair{String,Tuple{}}, s::String)
+    n, _ = p
+    "$n*$s"
+end
+
 function get_intermediate_name(structure)
     global n_intermediates
     n_intermediates += 1
-    if isempty(structure)
+    name = if isempty(structure)
         "X$(n_intermediates)"
     else
         "X$(n_intermediates)_" * prod(String, structure)
     end
+
+    push!(local_variables, (name, length(structure)))
+
+    name
 end
 
 function finalize_eT_function()
@@ -90,6 +99,17 @@ function TensorOperations.tensoradd!(C, pC,
 
     nA, sA = A
     nC, sC = C
+
+    A_loc = (nA, length(sA))
+    C_loc = (nC, length(sC))
+
+    if A_loc ∉ local_variables && A ∉ input_parameters
+        push!(input_parameters, A)
+    end
+
+    if C_loc ∉ local_variables && C ∉ output_parameters
+        push!(output_parameters, C)
+    end
 
     counts = Dict{String,Int}()
     for x in sA
