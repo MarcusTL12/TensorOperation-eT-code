@@ -237,8 +237,6 @@ end
 function sort_tensor_input(A, pA, backend)
     nA, (sA, _) = A
 
-    # pA = compose_perms(pA, lpA)
-
     if issorted(linearize(pA))
         println("$A is sorted")
         A, false, false
@@ -246,10 +244,13 @@ function sort_tensor_input(A, pA, backend)
         println("$A is transposed")
         A, true, false
     else
-        !issorted(linearize(pA))
-        println("$A not sorted, need to allocate tmp storage")
+        do_trans = linearize(get_pT(pA)) < linearize(pA)
 
-        # TODO: Check if using T leads to cheaper sort
+        if do_trans
+            pA = get_pT(pA)
+        end
+
+        println("$A not sorted, need to allocate tmp storage")
 
         nA_sort = nA * "_" * prod(string, linearize(pA))
 
@@ -261,7 +262,7 @@ function sort_tensor_input(A, pA, backend)
 
         TensorOperations.tensoradd!(A_sort, pA, A, :N, 1, 0, backend)
 
-        A_sort, false, true
+        A_sort, do_trans, true
     end
 end
 
@@ -308,6 +309,9 @@ function TensorOperations.tensorcontract!(C, pC,
     if TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)[2]
         eT_contract(C, pC, A, pA, B, pB, α, β, backend)
     elseif TensorOperations.tensorcontract_structure(rpC, B, rpB, conjB, A, rpA, conjA)[2]
+        println("Swapping multiplication order")
+        eT_contract(C, rpC, invT(B, pB), rpB, invT(A, pA), rpA, α, β, backend)
+    elseif linearize(rpC) < linearize(pC)
         println("Swapping multiplication order")
         eT_contract(C, rpC, invT(B, pB), rpB, invT(A, pA), rpA, α, β, backend)
     else

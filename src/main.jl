@@ -117,5 +117,5 @@ function test10()
 
     reset_state()
 
-    @tensor opt=(a, b, i, j, k) backend=eTbackend C[i, j, k] = A[a, b, i] * B[a, b, k, j]
+    @tensor opt=(a, b, i, j, k) backend=eTbackend C[i, j, k] = B[a, b, k, j] * A[a, b, i]
 end
