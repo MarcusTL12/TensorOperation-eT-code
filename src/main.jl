@@ -12,9 +12,9 @@ function test()
 end
 
 function test_sym()
-    A = "A" => ("o", "v")
-    B = "B" => ("v", "o")
-    C = "C" => ("o", "o")
+    A = "A" => ("o", "v") => :N
+    B = "B" => ("v", "o") => :N
+    C = "C" => ("o", "o") => :N
 
     reset_state()
 
@@ -22,9 +22,9 @@ function test_sym()
 end
 
 function test2()
-    g = "g" => ("v", "v", "o", "o")
-    t1 = "t1" => ("v", "o")
-    h_ov = "h" => ("o", "v")
+    g = "g" => ("v", "v", "o", "o") => :N
+    t1 = "t1" => ("v", "o") => :N
+    h_ov = "h" => ("o", "v") => :N
 
     C = "C" => ("v", "o")
 
@@ -34,9 +34,9 @@ function test2()
 end
 
 function test3()
-    A = "A" => ("v", "o", "v", "o")
-    B = "B" => ("o", "v", "o", "v")
-    C = "C" => ("o", "o", "o", "o")
+    A = "A" => ("v", "o", "v", "o") => :N
+    B = "B" => ("o", "v", "o", "v") => :N
+    C = "C" => ("o", "o", "o", "o") => :N
 
     reset_state()
 
@@ -44,9 +44,9 @@ function test3()
 end
 
 function test4()
-    A = "A" => ("v", "o", "v", "o")
-    B = "B" => ("v", "v", "o", "o")
-    C = "C" => ("v", "o", "v", "o")
+    A = "A" => ("v", "o", "v", "o") => :N
+    B = "B" => ("v", "v", "o", "o") => :N
+    C = "C" => ("v", "o", "v", "o") => :N
 
     reset_state()
 
@@ -54,10 +54,10 @@ function test4()
 end
 
 function test5()
-    A = "A" => ("o", "v")
-    B = "B" => ("v", "o")
-    C = "C" => ("o", "v")
-    D = "D" => ("o", "v")
+    A = "A" => ("o", "v") => :N
+    B = "B" => ("v", "o") => :N
+    C = "C" => ("o", "v") => :N
+    D = "D" => ("o", "v") => :N
 
     reset_state()
 
@@ -65,10 +65,10 @@ function test5()
 end
 
 function test6()
-    A = "A" => ("o", "v")
-    B = "B" => ("v", "o")
-    C = "C" => ("o", "v")
-    D = "D" => ("o", "v")
+    A = "A" => ("o", "v") => :N
+    B = "B" => ("v", "o") => :N
+    C = "C" => ("o", "v") => :N
+    D = "D" => ("o", "v") => :N
 
     reset_state()
 
@@ -76,12 +76,12 @@ function test6()
 end
 
 function test7()
-    A = "A" => ("v", "o")
-    B = "B" => ("v", "o")
-    C = "C" => ("o", "v")
-    D = "D" => ("o", "v")
+    A = "A" => ("v", "o") => :N
+    B = "B" => ("v", "o") => :N
+    C = "C" => ("o", "v") => :N
+    D = "D" => ("o", "v") => :N
 
-    γ = "wf%s0" => ()
+    γ = "wf%s0" => () => :N
 
     reset_state()
 
@@ -89,10 +89,10 @@ function test7()
 end
 
 function test8()
-    A = "A" => ("v", "o", "v", "o")
-    B = "B" => ("v", "o", "v", "v")
-    C = "C" => ("o", "o", "v", "v")
-    D = "D" => ("o", "v")
+    A = "A" => ("v", "o", "v", "o") => :N
+    B = "B" => ("v", "o", "v", "v") => :N
+    C = "C" => ("o", "o", "v", "v") => :N
+    D = "D" => ("o", "v") => :N
 
     reset_state()
 
@@ -100,10 +100,10 @@ function test8()
 end
 
 function test9()
-    A = "A" => ("v", "o", "v", "o")
-    B = "B" => ("o", "v", "v", "v")
-    C = "C" => ("o", "o", "v", "v")
-    D = "D" => ("o", "v")
+    A = "A" => ("v", "o", "v", "o") => :N
+    B = "B" => ("o", "v", "v", "v") => :N
+    C = "C" => ("o", "o", "v", "v") => :N
+    D = "D" => ("o", "v") => :N
 
     reset_state()
 
