@@ -65,14 +65,25 @@ function test5()
 end
 
 function test6()
-    A = "A" => ("o", "v") => :N
-    B = "B" => ("v", "o") => :N
-    C = "C" => ("o", "v") => :N
-    D = "D" => ("o", "v") => :N
+    A = "A" => ("o", "v") => (1, 2)
+    B = "B" => ("v", "o") => (1, 2)
+    C = "C" => ("o", "v") => (1, 2)
+    D = "D" => ("o", "v") => (1, 2)
 
     reset_state()
 
     @tensor opt=(a, b) backend=eTbackend D[i, a] = A[i, a] * B[b, j] * C[j, b]
+end
+
+function test6_5()
+    A = "A" => ("o", "v") => (1, 2)
+    B = "B" => ("v", "o") => (1, 2)
+    C = "C" => ("v", "o") => (1, 2)
+    D = "D" => ("o", "v") => (1, 2)
+
+    reset_state()
+
+    @tensor opt=(a, b) backend=eTbackend D[i, a] = A[i, a] * B[b, j] * C[b, j]
 end
 
 function test7()
@@ -86,6 +97,21 @@ function test7()
     reset_state()
 
     @tensor opt=(a, b) backend=eTbackend D[i, a] = γ * A[a, i] * B[b, j] * C[j, b]
+end
+
+function test7_5()
+    A = "A" => ("v", "o") => (1, 2)
+    B = "B" => ("v", "o") => (1, 2)
+    C = "C" => ("o", "v") => (1, 2)
+    B2 = "B2" => ("v", "o") => (1, 2)
+    C2 = "C2" => ("v", "o") => (1, 2)
+    D = "D" => ("o", "v") => (1, 2)
+
+    γ = "wf%s0" => () => ()
+
+    reset_state()
+
+    @tensor opt=(a, b, i, j) backend=eTbackend D[i, a] = γ * A[a, i] * (2 * B[b, j] * C[j, b] + B2[b, j] * C2[b, j])
 end
 
 function test8()
@@ -118,4 +144,72 @@ function test10()
     reset_state()
 
     @tensor opt=(a, b, i, j, k) backend=eTbackend C[i, j, k] = B[a, b, k, j] * A[a, b, i]
+end
+
+function test11()
+    A = "A" => ("v", "o") => (1, 2)
+    B = "B" => ("v", "o") => (1, 2)
+    C = "C" => ("v", "o", "o", "v") => (1, 2, 3, 4)
+
+    reset_state()
+
+    @tensor opt=(a, b, i, j) backend=eTbackend C[a, i, j, b] = A[a, i] * B[b, j]
+end
+
+function test12()
+    A = "A" => ("v", "o", "v", "o") => (1, 2, 3, 4)
+    B = "B" => ("v", "o") => (1, 2)
+    C = "C" => ("v", "o") => (1, 2)
+
+    reset_state()
+
+    @tensor opt=(a, b, i, j) backend=eTbackend C[a, i] = A[a, i, b, j] * B[b, j]
+end
+
+function test13()
+    A = "A" => ("v", "o", "v", "o") => (1, 2, 3, 4)
+    B = "B" => ("v", "o", "v") => (1, 2, 3)
+    C = "C" => ("o",) => (1,)
+
+    reset_state()
+
+    @tensor opt=(a, b, i, j) backend=eTbackend C[j] = B[a, i, b] * A[a, i, b, j]
+end
+
+function test14()
+    A = "A" => ("v", "v", "v", "v") => (1, 2, 3, 4)
+    B = "B" => ("v", "o") => (1, 2)
+    C = "C" => ("o", "o", "o", "o") => (1, 2, 3, 4)
+
+    reset_state()
+
+    @tensor opt=(a, b, c, d, i, j, k, l) backend=eTbackend begin
+        C[i, j, k, l] = A[a, b, c, d] * B[a, i] * B[b, j] * B[c, k] * B[d, l]
+    end
+end
+
+function test14()
+    A1 = "A1" => ("v", "o", "v", "o") => (1, 2, 3, 4)
+    A2 = "A2" => ("v", "o", "v", "o") => (1, 2, 3, 4)
+    B = "B" => ("v", "o") => (1, 2)
+    C = "C" => ("v", "o") => (1, 2)
+
+    reset_state()
+
+    @tensor opt=(a, b, c, i, j, k) backend=eTbackend begin
+        C[a, i] = A1[a, i, b, j] * A2[b, j, c, k] * B[c, k]
+    end
+end
+
+function test15()
+    A = "A" => ("v", "o", "v", "o") => (1, 2, 3, 4)
+    B = "B" => ("v", "o", "v") => (1, 2, 3)
+    C = "C" => ("o",) => (1,)
+    D = "D" => () => ()
+
+    reset_state()
+
+    @tensor opt=(a, b, c, i, j, k) backend=eTbackend begin
+        D[] = A[a, i, b, j] * B[a, i, b] * C[j]
+    end
 end

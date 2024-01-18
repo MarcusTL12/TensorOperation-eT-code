@@ -10,10 +10,13 @@ code_body::IOBuffer = IOBuffer()
 output_parameters::Vector{Pair} = Pair[]
 input_parameters::Vector{Pair} = Pair[]
 local_variables::Vector{Tuple{String,Int}} = Tuple{String,Int}[]
+use_ddot::Bool = false
 
 function reset_state()
     global n_intermediates
     n_intermediates = 0
+    global use_ddot
+    use_ddot = false
     take!(code_body)
     empty!(output_parameters)
     empty!(input_parameters)
@@ -29,6 +32,18 @@ end
 function Base.:*(p::Pair{String,Pair{Tuple{},Tuple{}}}, s::String)
     n, _ = p
     "$n*$s"
+end
+
+function Base.:*(a::Int, b::String)
+    "$(make_eT_num(a))*$b"
+end
+
+function Base.:+(a::String, b::String)
+    "$a+$b"
+end
+
+function Base.:-(a::String, b::String)
+    "$a-$b"
 end
 
 function get_intermediate_name(structure)
@@ -82,18 +97,23 @@ function finalize_eT_function(routine_name, wf_type="ccs")
         sort!(structure_sort)
 
         for (_, structure, names) in structure_sort
-            print(io, "      real(dp), dimension(")
-            isfirst = true
-            for d in structure
-                if isfirst
-                    isfirst = false
-                else
-                    print(io, ",")
-                end
+            print(io, "      real(dp)")
+            if length(structure) > 0
+                print(io, ", dimension(")
+                isfirst = true
+                for d in structure
+                    if isfirst
+                        isfirst = false
+                    else
+                        print(io, ",")
+                    end
 
-                print(io, eT_dim_dict[d])
+                    print(io, eT_dim_dict[d])
+                end
+                print(io, ")")
             end
-            print(io, "), intent($intent) :: ")
+
+            print(io, ", intent($intent) :: ")
 
             isfirst = true
             for name in names
@@ -150,6 +170,10 @@ function finalize_eT_function(routine_name, wf_type="ccs")
             print(io, name)
         end
         println(io, "")
+    end
+
+    if use_ddot
+        println(io, "      real(dp), external :: ddot")
     end
 
     println(io, "!")
@@ -258,7 +282,7 @@ function TensorOperations.tensoradd!(C, pC,
     if iszero(β) && !isone(α)
         println(code_body, "      call zero_array($nC, $dimstr)")
     elseif !isone(β) && !isone(α)
-        println(code_body, "      call dscal($dimstr, $(make_eT_num(β)), $nA, 1)")
+        println(code_body, "      call dscal($dimstr, $(make_eT_num(β)), $nC, 1)")
     end
 
     if issorted(p)
@@ -497,7 +521,7 @@ function eT_contract(C, pC,
         nC_pre => sC_pre => :N
     end
 
-    nC_out, sC_out = C_pre
+    nC_out, (sC_out, _) = C_pre
 
     # Doing the contraction
 
@@ -514,42 +538,108 @@ function eT_contract(C, pC,
 
     # Bodge to use dgemm for everything
     # TODO: recognize when to use dgemv, ddot and dger
-    if outdim1 == ""
-        outdim1 = "1"
-    end
-    if outdim2 == ""
-        outdim2 = "1"
-    end
-    if contdim == ""
-        contdim = "1"
-    end
-    if lda == ""
-        lda = "1"
-    end
-    if ldb == ""
-        ldb = "1"
-    end
-    if ldc == ""
-        ldc = "1"
-    end
 
-    println(
-        code_body,
-        """
-!
-      call dgemm($A_T_str, $B_T_str, &
-                 $outdim1, &
-                 $outdim2, &
-                 $contdim, &
-                 $(make_eT_num(α)), &
-                 $nA_sort, &
-                 $lda, &
-                 $nB_sort, &
-                 $ldb, &
-                 $(make_eT_num(β)), &
-                 $nC_out, &
-                 $ldc)
-!""")
+    if outdim1 == "" && outdim2 == ""
+        global use_ddot
+        use_ddot = true
+        println("Using ddot")
+        print(code_body, "      $nC_out = ")
+        if !iszero(β)
+            if !isone(β)
+                print(code_body, "$(make_eT_num(β)) * ")
+            end
+            print(code_body, "$nC_out + ")
+        end
+
+        if !isone(α)
+            print(code_body, "$(make_eT_num(α)) * ")
+        end
+        println(code_body, "ddot($contdim, $nA_sort, 1, $nB_sort, 1)")
+    elseif contdim == ""
+        println("Using dger")
+
+        if !isone(β)
+            dimstr = get_dimstr(sC_out)
+            if iszero(β)
+                println(code_body, "      call zero_array($nC_out, $dimstr)")
+            else
+                println(code_body, "      call dscal($dimstr, $(make_eT_num(β)), $nC_out, 1)")
+            end
+        end
+
+        println(
+            code_body,
+            """
+    !
+          call dger($outdim1, &
+                    $outdim2, &
+                    $(make_eT_num(α)), &
+                    $nA_sort, 1, &
+                    $nB_sort, 1, &
+                    $nC_out, 1)
+    !""")
+    elseif outdim1 == ""
+        println("Using left dgemv")
+
+        m = B_T ? outdim2 : contdim
+        n = B_T ? contdim : outdim2
+
+        T_str = B_T ? "'N'" : "'T'"
+
+        println(
+            code_body,
+            """
+    !
+          call dgemv($T_str, &
+                     $m, &
+                     $n, &
+                     $(make_eT_num(α)), &
+                     $nB_sort, &
+                     $ldb, &
+                     $nA_sort, 1, &
+                     $(make_eT_num(β)), &
+                     $nC_out, 1)
+    !""")
+    elseif outdim2 == ""
+        println("Using right dgemv")
+
+        m = A_T ? outdim1 : contdim
+        n = A_T ? contdim : outdim1
+
+        println(
+            code_body,
+            """
+    !
+          call dgemv($A_T_str, &
+                     $m, &
+                     $n, &
+                     $(make_eT_num(α)), &
+                     $nA_sort, &
+                     $lda, &
+                     $nB_sort, 1, &
+                     $(make_eT_num(β)), &
+                     $nC_out, 1)
+    !""")
+    else
+        println("Using dgemm")
+        println(
+            code_body,
+            """
+    !
+          call dgemm($A_T_str, $B_T_str, &
+                     $outdim1, &
+                     $outdim2, &
+                     $contdim, &
+                     $(make_eT_num(α)), &
+                     $nA_sort, &
+                     $lda, &
+                     $nB_sort, &
+                     $ldb, &
+                     $(make_eT_num(β)), &
+                     $nC_out, &
+                     $ldc)
+    !""")
+    end
 
     if A_alloc
         TensorOperations.tensorfree!(A_sort)
