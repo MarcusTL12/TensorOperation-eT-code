@@ -213,3 +213,29 @@ function test15()
         D[] = A[a, i, b, j] * B[a, i, b] * C[j]
     end
 end
+
+# Here it is good to sort after the contraction
+function test16()
+    A = "A" => ("o", "o", "v", "v", "v", "v") => (1:6...,)
+    B = "B" => ("o", "o", "v", "v", "v", "v") => (1:6...,)
+    C = "C" => ("o", "o", "o", "o") => (1, 2, 3, 4)
+
+    reset_state()
+
+    @tensor opt=(i, j, k, l, a, b, c, d) backend=eTbackend begin
+        C[i, j, k, l] = A[i, j, a, b, c, d] * B[l, k, a, b, c, d]
+    end
+end
+
+# Here it is good to sort before the contraction
+function test17()
+    A = "A" => ("o", "o", "v") => (1, 2, 3)
+    B = "B" => ("o", "o", "v") => (1, 2, 3)
+    C = "C" => ("o", "o", "o", "o") => (1, 2, 3, 4)
+
+    reset_state()
+
+    @tensor opt=(i, j, k, l, a) backend=eTbackend begin
+        C[i, j, k, l] = A[i, j, a] * B[l, k, a]
+    end
+end
