@@ -26,7 +26,7 @@ function TensorOperations.tensorscalar(p::Pair)
     n
 end
 
-function Base.:*(p::Pair{String,Tuple{}}, s::String)
+function Base.:*(p::Pair{String,Pair{Tuple{},Tuple{}}}, s::String)
     n, _ = p
     "$n*$s"
 end
@@ -41,8 +41,124 @@ function get_intermediate_name(structure)
     end
 end
 
-function finalize_eT_function()
-    println(String(take!(code_body)))
+function finalize_eT_function(routine_name, wf_type="ccs")
+    io = IOBuffer()
+
+    print(io, "   subroutine $routine_name(wf")
+
+    for (param, _) in output_parameters
+        print(io, ", $param")
+    end
+
+    for (param, _) in input_parameters
+        print(io, ", $param")
+    end
+
+    println(io, ")")
+
+    println(
+        io,
+        """
+!!
+!! Generated function
+!!
+      implicit none
+!"""
+    )
+
+    println(io, "      class($wf_type), intent(in) :: wf\n!")
+
+    for (params, intent) in ((output_parameters, "out"), (input_parameters, "in"))
+        structure_dict = Dict()
+
+        for (name, (structure, _)) in params
+            if !haskey(structure_dict, structure)
+                structure_dict[structure] = String[]
+            end
+            push!(structure_dict[structure], name)
+        end
+
+        structure_sort = [(length(s), s, names) for (s, names) in structure_dict]
+        sort!(structure_sort)
+
+        for (_, structure, names) in structure_sort
+            print(io, "      real(dp), dimension(")
+            isfirst = true
+            for d in structure
+                if isfirst
+                    isfirst = false
+                else
+                    print(io, ",")
+                end
+
+                print(io, eT_dim_dict[d])
+            end
+            print(io, "), intent($intent) :: ")
+
+            isfirst = true
+            for name in names
+                if isfirst
+                    isfirst = false
+                else
+                    print(io, ", ")
+                end
+                print(io, name)
+            end
+            println(io, "")
+        end
+
+        println(io, "!")
+    end
+
+    dim_dict = Dict()
+
+    for (name, n) in local_variables
+        if !haskey(dim_dict, n)
+            dim_dict[n] = String[]
+        end
+        push!(dim_dict[n], name)
+    end
+
+    dim_sort = sort!(collect(dim_dict))
+
+    for (n, names) in dim_sort
+        print(io, "      real(dp)")
+        if n > 0
+            print(io, ", dimension(")
+            isfirst = true
+            for _ in 1:n
+                if isfirst
+                    isfirst = false
+                else
+                    print(io, ",")
+                end
+
+                print(io, ":")
+            end
+            print(io, "), allocatable")
+        end
+
+        print(io, " :: ")
+
+        isfirst = true
+        for name in names
+            if isfirst
+                isfirst = false
+            else
+                print(io, ", ")
+            end
+            print(io, name)
+        end
+        println(io, "")
+    end
+
+    println(io, "!")
+
+    print(io, String(take!(code_body)))
+
+    println(io, "!\n   end subroutine $routine_name")
+
+    String(take!(io))
 end
 
 function TensorOperations.tensoradd_structure(pC, A::Pair, conjA)
@@ -328,6 +444,22 @@ function eT_contract(C, pC,
     nB, (sB, lpB) = B
     nC, (sC, lpC) = C
 
+    A_loc = (nA, length(sA))
+    B_loc = (nB, length(sB))
+    C_loc = (nC, length(sC))
+
+    if A_loc ∉ local_variables && A ∉ input_parameters
+        push!(input_parameters, A)
+    end
+
+    if B_loc ∉ local_variables && B ∉ input_parameters
+        push!(input_parameters, B)
+    end
+
+    if C_loc ∉ local_variables && C ∉ output_parameters
+        push!(output_parameters, C)
+    end
+
     pA = compose_iperms(pA, lpA)
     pB = compose_iperms(pB, lpB)
     pC = compose_iperms(pC, lpC)
@@ -367,22 +499,6 @@ function eT_contract(C, pC,
 
     nC_out, sC_out = C_pre
 
-    A_loc = (nA, length(sA))
-    B_loc = (nB, length(sB))
-    C_loc = (nC, length(sC))
-
-    if A_loc ∉ local_variables && A ∉ input_parameters
-        push!(input_parameters, A)
-    end
-
-    if B_loc ∉ local_variables && B ∉ input_parameters
-        push!(input_parameters, B)
-    end
-
-    if C_loc ∉ local_variables && C ∉ output_parameters
-        push!(output_parameters, C)
-    end
-
     # Doing the contraction
 
     outdim1 = get_dimstr(TupleTools.getindices(sA, pA[1]))
@@ -395,6 +511,27 @@ function eT_contract(C, pC,
 
     A_T_str = A_T ? "'T'" : "'N'"
     B_T_str = B_T ? "'T'" : "'N'"
+
+    # Bodge to use dgemm for everything
+    # TODO: recognize when to use dgemv, ddot and dger
+    if outdim1 == ""
+        outdim1 = "1"
+    end
+    if outdim2 == ""
+        outdim2 = "1"
+    end
+    if contdim == ""
+        contdim = "1"
+    end
+    if lda == ""
+        lda = "1"
+    end
+    if ldb == ""
+        ldb = "1"
+    end
+    if ldc == ""
+        ldc = "1"
+    end
 
     println(
         code_body,
