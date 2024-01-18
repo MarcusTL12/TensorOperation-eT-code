@@ -85,7 +85,7 @@ function TensorOperations.tensoralloc_add(TC, pC, A::Pair, conjA, istemp=false,
 
     eT_alloc(name => structure)
 
-    name => structure => :N
+    name => structure => (1:length(structure)...,)
 end
 
 function get_dimstr(structure)
@@ -185,46 +185,66 @@ function TensorOperations.tensortrace!(C, pC,
     C
 end
 
+function compose_perms(pA, lpA)
+    lin = TupleTools.getindices(linearize(pA), lpA)
+
+    r1 = 1:length(pA[1])
+    r2 = length(pA[1])+1:length(lin)
+
+    lin[r1], lin[r2]
+end
+
+function compose_iperms(pA, lpA)
+    lin = TupleTools.getindices(linearize(pA), invperm(lpA))
+
+    r1 = 1:length(pA[1])
+    r2 = length(pA[1])+1:length(lin)
+
+    lin[r1], lin[r2]
+end
+
 function TensorOperations.tensorcontract_structure(pC,
     A::Pair, pA, conjA,
     B::Pair, pB, conjB)
-    nA, (sA, TA) = A
-    nB, (sB, TB) = B
+    nA, (sA, lpA) = A
+    nB, (sB, lpB) = B
 
-    pA = TA == :N ? pA : get_pT(pA)
-    pB = TB == :N ? pB : get_pT(pB)
+    pA = compose_perms(pA, lpA)
+    pB = compose_perms(pB, lpB)
 
     lA = length(pA[1])
     sC = map(n -> n <= lA ? sA[pA[1][n]] : sB[pB[2][n-lA]], linearize(pC))
 
     if issorted(linearize(pC))
-        sC => :N, true
+        sC => linearize(pC), true
     elseif issorted(linearize(reverse(pC)))
-        map(n -> n <= lA ? sA[pA[1][n]] : sB[pB[2][n-lA]], linearize(reverse(pC))) => :T, true
+        map(n -> n <= lA ? sA[pA[1][n]] : sB[pB[2][n-lA]], linearize(reverse(pC))) => linearize(pC), true
     else
-        sC => :N, false
+        sC => linearize(pC), false
     end
 end
 
 function TensorOperations.tensoralloc_contract(TC, pC, A::Pair, pA, conjA, B::Pair, pB, conjB,
     istemp=false, backend::TensorOperations.Backend...)
-    (structure, NT), _ = TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)
+    (structure, lpC), _ = TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)
     name = get_intermediate_name(structure)
 
     eT_alloc(name => structure)
 
-    name => structure => NT
+    name => structure => lpC
 end
 
 function sort_tensor_input(A, pA, backend)
     nA, (sA, _) = A
 
+    # pA = compose_perms(pA, lpA)
+
     if issorted(linearize(pA))
         println("$A is sorted")
-        A, false
+        A, false, false
     elseif issorted(linearize(reverse(pA)))
         println("$A is transposed")
-        A, true
+        A, true, false
     else
         !issorted(linearize(pA))
         println("$A not sorted, need to allocate tmp storage")
@@ -237,14 +257,16 @@ function sort_tensor_input(A, pA, backend)
 
         eT_alloc(nA_sort => sA_sort)
 
-        TensorOperations.tensoradd!(nA_sort => sA_sort, pA, A, :N, 1, 0, backend)
+        A_sort = nA_sort => sA_sort => (1:length(linearize(pA))...,)
 
-        nA_sort => sA_sort => :N, false
+        TensorOperations.tensoradd!(A_sort, pA, A, :N, 1, 0, backend)
+
+        A_sort, false, true
     end
 end
 
 function get_pT(pA)
-    lin = linearize(reverse(((1,), (2, 3, 4))))
+    lin = linearize(reverse(pA))
 
     r1 = 1:length(pA[1])
     r2 = length(pA[1])+1:length(lin)
@@ -252,12 +274,16 @@ function get_pT(pA)
     lin[r1], lin[r2]
 end
 
-function invT(A)
-    nA, (sA, TA) = A
+function invT(A, pA)
+    nA, (sA, lpA) = A
 
-    nTA = TA == :N ? :T : :N
+    r1 = 1:length(pA[1])
+    r2 = length(pA[1])+1:length(linearize(pA))
 
-    nA => sA => nTA
+    lpA1 = lpA[r1]
+    lpA2 = lpA[r2]
+
+    nA => sA => linearize((lpA2, lpA1))
 end
 
 function TensorOperations.tensorcontract!(C, pC,
@@ -283,7 +309,7 @@ function TensorOperations.tensorcontract!(C, pC,
         eT_contract(C, pC, A, pA, B, pB, α, β, backend)
     elseif TensorOperations.tensorcontract_structure(rpC, B, rpB, conjB, A, rpA, conjA)[2]
         println("Swapping multiplication order")
-        eT_contract(C, rpC, invT(B), rpB, invT(A), rpA, α, β, backend)
+        eT_contract(C, rpC, invT(B, pB), rpB, invT(A, pA), rpA, α, β, backend)
     else
         eT_contract(C, pC, A, pA, B, pB, α, β, backend)
     end
@@ -294,20 +320,21 @@ function eT_contract(C, pC,
     B, pB,
     α, β, backend::eTbackend)
 
-    nA, (sA, TA) = A
-    nB, (sB, TB) = B
-    nC, (sC, TC) = C
+    nA, (sA, lpA) = A
+    nB, (sB, lpB) = B
+    nC, (sC, lpC) = C
 
-    pA = TA == :N ? pA : get_pT(pA)
-    pB = TB == :N ? pB : get_pT(pB)
+    pA = compose_iperms(pA, lpA)
+    pB = compose_iperms(pB, lpB)
+    pC = compose_iperms(pC, lpC)
 
     @show pA pB pC
 
-    A_sort, A_T = sort_tensor_input(A, pA, backend)
+    A_sort, A_T, A_alloc = sort_tensor_input(A, pA, backend)
 
     nA_sort, (sA_sort, _) = A_sort
 
-    B_sort, B_T = sort_tensor_input(B, pB, backend)
+    B_sort, B_T, B_alloc = sort_tensor_input(B, pB, backend)
 
     nB_sort, (sB_sort, _) = B_sort
 
@@ -319,9 +346,6 @@ function eT_contract(C, pC,
 
     C_pre = if issorted(linearize(pC))
         println("Output is sorted")
-        C
-    elseif issorted(linearize(reverse(pC)))
-        println("Output is transposed")
         C
     else
         println("Output not sorted, need to allocate tmp output!")
@@ -377,14 +401,22 @@ function eT_contract(C, pC,
                  $outdim2, &
                  $contdim, &
                  $(make_eT_num(α)), &
-                 $nA, &
+                 $nA_sort, &
                  $lda, &
-                 $nB, &
+                 $nB_sort, &
                  $ldb, &
                  $(make_eT_num(β)), &
                  $nC_out, &
                  $ldc)
 !""")
+
+    if A_alloc
+        TensorOperations.tensorfree!(A_sort)
+    end
+
+    if B_alloc
+        TensorOperations.tensorfree!(B_sort)
+    end
 
     if explicit_sort_output
         println("Sorting output")

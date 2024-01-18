@@ -89,10 +89,10 @@ function test7()
 end
 
 function test8()
-    A = "A" => ("v", "o", "v", "o") => :N
-    B = "B" => ("v", "o", "v", "v") => :N
-    C = "C" => ("o", "o", "v", "v") => :N
-    D = "D" => ("o", "v") => :N
+    A = "A" => ("v", "o", "v", "o") => (1:4...,)
+    B = "B" => ("v", "o", "v", "v") => (1:4...,)
+    C = "C" => ("o", "o", "v", "v") => (1:4...,)
+    D = "D" => ("o", "v") => (1, 2)
 
     reset_state()
 
@@ -100,12 +100,22 @@ function test8()
 end
 
 function test9()
-    A = "A" => ("v", "o", "v", "o") => :N
-    B = "B" => ("o", "v", "v", "v") => :N
-    C = "C" => ("o", "o", "v", "v") => :N
-    D = "D" => ("o", "v") => :N
+    A = "A" => ("v", "o", "v", "o") => (1:4...,)
+    B = "B" => ("o", "v", "v", "v") => (1:4...,)
+    C = "C" => ("o", "o", "v", "v") => (1:4...,)
+    D = "D" => ("o", "v") => (1, 2)
 
     reset_state()
 
     @tensor opt=(a, b, c, d, i, j, k) backend=eTbackend D[i, a] = A[a, j, b, k] * B[k, b, c, d] * C[i, j, c, d]
+end
+
+function test10()
+    A = "A" => ("v", "v", "o") => (1:3...,)
+    B = "B" => ("v", "v", "o", "o") => (1:4...,)
+    C = "C" => ("o", "o", "o") => (1, 2, 3)
+
+    reset_state()
+
+    @tensor opt=(a, b, i, j, k) backend=eTbackend C[i, j, k] = A[a, b, i] * B[a, b, k, j]
 end
