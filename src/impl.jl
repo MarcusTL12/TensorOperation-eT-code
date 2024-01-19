@@ -407,6 +407,19 @@ function TensorOperations.tensortrace!(C, pC,
 
     println(code_body, "!")
 
+    print(code_body, "!\$omp parallel do schedule(static) collapse($n_loop_indices) private(")
+
+    isfirst = true
+    for i in 1:n_loop_indices
+        if isfirst
+            isfirst = false
+        else
+            print(code_body, ",")
+        end
+        print(code_body, "i$i")
+    end
+    println(code_body, ")")
+
     for i in reverse(1:n_loop_indices)
         println(code_body, "   "^tab_level, "do i$i = 1, ", input_ind_dims[i])
         tab_level += 1
@@ -460,6 +473,8 @@ function TensorOperations.tensortrace!(C, pC,
         tab_level -= 1
         println(code_body, "   "^tab_level, "end do")
     end
+
+    println(code_body, "!\$omp end parallel do")
 
     println(code_body, "!")
 
