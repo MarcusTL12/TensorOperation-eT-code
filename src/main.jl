@@ -255,12 +255,62 @@ end
 
 function test19()
     F = "F" => ("v", "o") => (1, 2)
-    h = "h" => ("o", "v") => (1, 2)
+    h = "h" => ("v", "o") => (1, 2)
     d = "d" => ("o", "o") => (1, 2)
 
     reset_state()
 
     @tensor backend=eTbackend begin
-        F[a, i] = h[i, a] * d[j, j]
+        F[a, i] = h[a, i] * d[j, j]
+    end
+end
+
+function test20()
+    F = "F" => ("v", "o") => (1, 2)
+    d = "d" => ("v", "o") => (1, 2)
+
+    γ = "wf%s0" => () => ()
+
+    reset_state()
+
+    @tensor backend=eTbackend begin
+        F[a, i] = γ[] * d[a, i]
+    end
+end
+
+function test21()
+    E = "E" => () => ()
+    d = "d" => ("o", "o") => (1, 2)
+
+    γ = Sym("gamma")
+
+    reset_state()
+
+    @tensor backend=eTbackend begin
+        E[] = γ * d[i, i]
+    end
+end
+
+function test22()
+    A = "A" => ("v", "o", "v", "o") => (1, 2, 3, 4)
+    B = "B" => ("o", "v") => (1, 2)
+    C = "C" => ("v", "o") => (1, 2)
+
+    reset_state()
+
+    @tensor opt=(a=>10χ,b=>10χ,i=>χ,j=>χ) backend=eTbackend begin
+        C[a, i] = 2 * A[a, i, b, j] * B[j, b]
+    end
+end
+
+function test23()
+    A = "A" => ("v", "o") => (1, 2)
+    B = "B" => ("v", "v") => (1, 2)
+    C = "C" => ("v", "o") => (1, 2)
+
+    reset_state()
+
+    @tensor opt=(a=>10χ,b=>10χ,i=>χ,j=>χ) backend=eTbackend begin
+        C[a, i] += A[b, i] * B[a, b]
     end
 end

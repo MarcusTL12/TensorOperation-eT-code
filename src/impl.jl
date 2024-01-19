@@ -1,4 +1,5 @@
 using TupleTools
+using SymPy
 
 const eTbackend = TensorOperations.Backend{:eTbackend}
 
@@ -7,8 +8,8 @@ include("eT_utils.jl")
 n_intermediates::Int = 0
 
 code_body::IOBuffer = IOBuffer()
-output_parameters::Vector{Pair} = Pair[]
-input_parameters::Vector{Pair} = Pair[]
+output_parameters::Vector = []
+input_parameters::Vector = []
 local_variables::Vector{Tuple{String,Int}} = Tuple{String,Int}[]
 n_integers::Int = 0
 use_ddot::Bool = false
@@ -29,28 +30,26 @@ end
 TensorOperations.scalartype(::Pair) = Float64
 function TensorOperations.tensorscalar(p::Pair)
     n, (s, _) = p
-    n
+    Sym(n)
+end
+function TensorOperations.tensorscalar(p::Sym)
+    p
 end
 
-function Base.:*(p::Pair{String,Pair{Tuple{},Tuple{}}}, s::String)
-    n, _ = p
-    "$n*$s"
+function Base.:*(p::Sym, ::TensorOperations.VectorInterface.One)
+    p
 end
 
-function Base.:*(p::Pair{String,Pair{Tuple{},Tuple{}}}, ::TensorOperations.VectorInterface.One)
-    p.first
+function Base.:*(::TensorOperations.VectorInterface.One, p::Sym)
+    p
 end
 
-function Base.:*(a::Int, b::String)
-    "$(make_eT_num(a))*$b"
+function Base.:*(::Sym, ::TensorOperations.VectorInterface.Zero)
+    Sym(0)
 end
 
-function Base.:+(a::String, b::String)
-    "$a+$b"
-end
-
-function Base.:-(a::String, b::String)
-    "$a-$b"
+function Base.:*(::TensorOperations.VectorInterface.Zero, ::Sym)
+    Sym(0)
 end
 
 function get_intermediate_name(structure)
@@ -68,12 +67,22 @@ function finalize_eT_function(routine_name, wf_type="ccs")
 
     print(io, "   subroutine $routine_name(wf")
 
-    for (param, _) in output_parameters
-        print(io, ", $param")
+    for param in output_parameters
+        param_str = if param isa Sym
+            string(param)
+        else
+            param[1]
+        end
+        print(io, ", $param_str")
     end
 
-    for (param, _) in input_parameters
-        print(io, ", $param")
+    for param in input_parameters
+        param_str = if param isa Sym
+            string(param)
+        else
+            param[1]
+        end
+        print(io, ", $param_str")
     end
 
     println(io, ")")
@@ -93,7 +102,12 @@ function finalize_eT_function(routine_name, wf_type="ccs")
     for (params, intent) in ((output_parameters, "out"), (input_parameters, "in"))
         structure_dict = Dict()
 
-        for (name, (structure, _)) in params
+        for param in params
+            name, (structure, _) = if param isa Sym
+                string(param), ((), ())
+            else
+                param
+            end
             if !haskey(structure_dict, structure)
                 structure_dict[structure] = String[]
             end
@@ -242,12 +256,21 @@ end
 
 function TensorOperations.tensoralloc_add(TC, pC, A::Pair, conjA, istemp=false,
     backend::TensorOperations.Backend...)
-    structure = TensorOperations.tensoradd_structure(pC, A, conjA)
-    name = get_intermediate_name(structure)
+    if isempty(linearize(pC))
+        name = get_intermediate_name(())
 
-    eT_alloc(name => structure)
+        eT_alloc(name => ())
 
-    name => structure => (1:length(structure)...,)
+        Sym(name)
+    else
+        structure = TensorOperations.tensoradd_structure(pC, A, conjA)
+
+        name = get_intermediate_name(structure)
+
+        eT_alloc(name => structure)
+
+        name => structure => (1:length(structure)...,)
+    end
 end
 
 function get_dimstr(structure)
@@ -353,7 +376,12 @@ function TensorOperations.tensortrace!(C, pC,
     n_integers = max(n_integers, n_loop_indices)
 
     nA, (sA, lpA) = A
-    nC, (sC, lpC) = C
+
+    nC, (sC, lpC) = if C isa Sym
+        string(C), ((), ())
+    else
+        C
+    end
 
     @assert issorted(lpA)
     @assert issorted(lpC)
@@ -407,7 +435,11 @@ function TensorOperations.tensortrace!(C, pC,
 
     println(code_body, "!")
 
-    print(code_body, "!\$omp parallel do schedule(static) collapse($n_loop_indices) private(")
+    print(code_body, "!\$omp parallel do schedule(static)")
+    if n_loop_indices > 1
+        print(code_body, " collapse($n_loop_indices)")
+    end
+    print(code_body, " private(")
 
     isfirst = true
     for i in 1:n_loop_indices
@@ -500,10 +532,19 @@ function compose_iperms(pA, lpA)
 end
 
 function TensorOperations.tensorcontract_structure(pC,
-    A::Pair, pA, conjA,
-    B::Pair, pB, conjB)
-    nA, (sA, lpA) = A
-    nB, (sB, lpB) = B
+    A::Union{Pair,Sym}, pA, conjA,
+    B::Union{Pair,Sym}, pB, conjB)
+    nA, (sA, lpA) = if A isa Sym
+        string(A), ((), ())
+    else
+        A
+    end
+
+    nB, (sB, lpB) = if B isa Sym
+        string(B), ((), ())
+    else
+        B
+    end
 
     pA = compose_perms(pA, lpA)
     pB = compose_perms(pB, lpB)
@@ -522,16 +563,28 @@ end
 
 function TensorOperations.tensoralloc_contract(TC, pC, A::Pair, pA, conjA, B::Pair, pB, conjB,
     istemp=false, backend::TensorOperations.Backend...)
-    (structure, lpC), _ = TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)
-    name = get_intermediate_name(structure)
+    if isempty(linearize(pC))
+        name = get_intermediate_name(())
 
-    eT_alloc(name => structure)
+        eT_alloc(name => ())
 
-    name => structure => lpC
+        Sym(name)
+    else
+        (structure, lpC), _ = TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)
+        name = get_intermediate_name(structure)
+
+        eT_alloc(name => structure)
+
+        name => structure => lpC
+    end
 end
 
 function sort_tensor_input(A, pA, backend)
-    nA, (sA, _) = A
+    nA, (sA, _) = if A isa Sym
+        string(A), ((), ())
+    else
+        A
+    end
 
     if issorted(linearize(pA))
         println("$A is sorted")
@@ -612,10 +665,10 @@ function TensorOperations.tensorcontract!(C, pC,
         eT_contract(C, pC, A, pA, B, pB, α, β, backend)
     elseif TensorOperations.tensorcontract_structure(rpC, B, rpB, conjB, A, rpA, conjA)[2]
         println("Swapping multiplication order")
-        eT_contract(C, rpC, invT(B, pB), rpB, invT(A, pA), rpA, α, β, backend)
+        eT_contract(C, rpC, B, rpB, A, rpA, α, β, backend)
     elseif linearize(rpC) < linearize(pC)
         println("Swapping multiplication order")
-        eT_contract(C, rpC, invT(B, pB), rpB, invT(A, pA), rpA, α, β, backend)
+        eT_contract(C, rpC, B, rpB, A, rpA, α, β, backend)
     else
         eT_contract(C, pC, A, pA, B, pB, α, β, backend)
     end
@@ -626,9 +679,23 @@ function eT_contract(C, pC,
     B, pB,
     α, β, backend::eTbackend)
 
-    nA, (sA, lpA) = A
-    nB, (sB, lpB) = B
-    nC, (sC, lpC) = C
+    nA, (sA, lpA) = if A isa Sym
+        string(A), ((), ())
+    else
+        A
+    end
+
+    nB, (sB, lpB) = if B isa Sym
+        string(B), ((), ())
+    else
+        B
+    end
+
+    nC, (sC, lpC) = if C isa Sym
+        string(C), ((), ())
+    else
+        C
+    end
 
     A_loc = (nA, length(sA))
     B_loc = (nB, length(sB))
@@ -654,11 +721,19 @@ function eT_contract(C, pC,
 
     A_sort, A_T, A_alloc = sort_tensor_input(A, pA, backend)
 
-    nA_sort, (sA_sort, _) = A_sort
+    nA_sort, (sA_sort, _) = if A_sort isa Sym
+        string(A_sort), ((), ())
+    else
+        A_sort
+    end
 
     B_sort, B_T, B_alloc = sort_tensor_input(B, pB, backend)
 
-    nB_sort, (sB_sort, _) = B_sort
+    nB_sort, (sB_sort, _) = if B_sort isa Sym
+        string(B_sort), ((), ())
+    else
+        B_sort
+    end
 
     outdim1 = get_dimstr(TupleTools.getindices(sA, pA[1]))
     outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
@@ -673,7 +748,25 @@ function eT_contract(C, pC,
 
     # Check if we get away with ddot or add
 
-    if outdim1 == "" && outdim2 == ""
+    if outdim1 == "" && outdim2 == "" && contdim == ""
+        println("Scalar scalar multiplication")
+
+        print(code_body, "      $nC = ")
+
+        if !iszero(β)
+            if !isone(β)
+                print(code_body, make_eT_num(β), "*")
+            end
+            print(code_body, "$nC + ")
+        end
+
+        if !isone(α)
+            print(code_body, make_eT_num(α), "*")
+        end
+
+        println(code_body, "$nA_sort*$nB_sort")
+        return C
+    elseif outdim1 == "" && outdim2 == ""
         global use_ddot
         use_ddot = true
         println("Using ddot")
@@ -693,12 +786,12 @@ function eT_contract(C, pC,
     elseif contdim == "" && outdim2 == ""
         println("Using tensoradd")
 
-        TensorOperations.tensoradd!(C, pC, A_sort, :N, B * α, β, backend)
+        TensorOperations.tensoradd!(C, pC, A_sort, :N, Sym(nB) * α, β, backend)
         return C
     elseif contdim == "" && outdim1 == ""
         println("Using tensoradd")
 
-        TensorOperations.tensoradd!(C, pC, B_sort, :N, A * α, β, backend)
+        TensorOperations.tensoradd!(C, pC, B_sort, :N, Sym(nA) * α, β, backend)
         return C
     end
 
