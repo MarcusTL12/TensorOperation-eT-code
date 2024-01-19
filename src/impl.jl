@@ -713,12 +713,12 @@ function eT_contract(C, pC,
 
     @show pA pB pC
 
-    if length(linearize(pA)) > length(linearize(pB)) && !issorted(pA[2]) && issorted(pB[1])
+    if length(linearize(pA)) > length(linearize(pB)) && !issorted(pA[2])
         println("Swapping permutation order of contraction indices")
         P = TupleTools.sortperm(pA[2])
         pA = (pA[1], TupleTools.getindices(pA[2], P))
         pB = (TupleTools.getindices(pB[1], P), pB[2])
-    elseif length(linearize(pA)) < length(linearize(pB)) && issorted(pA[2]) && !issorted(pB[1])
+    elseif length(linearize(pA)) < length(linearize(pB)) && !issorted(pB[1])
         println("Swapping permutation order of contraction indices")
         P = TupleTools.sortperm(pB[1])
         pA = (pA[1], TupleTools.getindices(pA[2], P))
