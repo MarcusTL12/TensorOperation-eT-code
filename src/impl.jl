@@ -655,12 +655,6 @@ function TensorOperations.tensorcontract!(C, pC,
     rpC = (TupleTools.getindices(indCinoBA, tpC[1]),
         TupleTools.getindices(indCinoBA, tpC[2]))
 
-    # if isempty(linearize(pA))
-    #     return TensorOperations.tensoradd!(C, pC, B, conjB, A * α, β, backend)
-    # elseif isempty(linearize(pB))
-    #     return TensorOperations.tensoradd!(C, pC, A, conjA, B * α, β, backend)
-    # end
-
     if TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)[2]
         eT_contract(C, pC, A, pA, B, pB, α, β, backend)
     elseif TensorOperations.tensorcontract_structure(rpC, B, rpB, conjB, A, rpA, conjA)[2]
@@ -716,6 +710,20 @@ function eT_contract(C, pC,
     pA = compose_iperms(pA, lpA)
     pB = compose_iperms(pB, lpB)
     pC = compose_iperms(pC, lpC)
+
+    @show pA pB pC
+
+    if length(linearize(pA)) > length(linearize(pB)) && !issorted(pA[2]) && issorted(pB[1])
+        println("Swapping permutation order of contraction indices")
+        P = TupleTools.sortperm(pA[2])
+        pA = (pA[1], TupleTools.getindices(pA[2], P))
+        pB = (TupleTools.getindices(pB[1], P), pB[2])
+    elseif length(linearize(pA)) < length(linearize(pB)) && issorted(pA[2]) && !issorted(pB[1])
+        println("Swapping permutation order of contraction indices")
+        P = TupleTools.sortperm(pB[1])
+        pA = (pA[1], TupleTools.getindices(pA[2], P))
+        pB = (TupleTools.getindices(pB[1], P), pB[2])
+    end
 
     @show pA pB pC
 

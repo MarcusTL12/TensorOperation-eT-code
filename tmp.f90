@@ -16,9 +16,7 @@
 !
       real(dp) :: X1, X4
 !
-      real(dp), dimension(:,:), allocatable :: X2_oo, X3_oo, ct_vo_21, d_ov_21
-!
-      real(dp), dimension(:,:,:,:), allocatable :: cv_vovo_1243, cu_vovo_1243
+      real(dp), dimension(:,:), allocatable :: d_ov_21, X2_oo, X3_oo, ct_vo_21
 !
       integer :: i1
       real(dp), external :: ddot
@@ -89,20 +87,20 @@
                  rho_vo, &
                  wf%n_v)
 !
-      call mem%alloc(cv_vovo_1243, wf%n_v, wf%n_o, wf%n_o, wf%n_v)
-      call sort_to_1243(cv_vovo, cv_vovo_1243, wf%n_v, wf%n_o, wf%n_v, wf%n_o)
+      call mem%alloc(d_ov_21, wf%n_v, wf%n_o)
+      call sort_to_21(d_ov, d_ov_21, wf%n_o, wf%n_v)
 !
       call dgemv('N', &
                  wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
                  two, &
-                 cv_vovo_1243, &
+                 cv_vovo, &
                  wf%n_v*wf%n_o, &
-                 d_ov, 1, &
+                 d_ov_21, 1, &
                  one, &
                  rho_vo, 1)
 !
-      call mem%dealloc(cv_vovo_1243)
+      call mem%dealloc(d_ov_21)
       call mem%alloc(X2_oo, wf%n_o, wf%n_o)
 !
       call dgemm('T', 'T', &
@@ -167,20 +165,20 @@
       call sort_to_21(ct_vo, ct_vo_21, wf%n_v, wf%n_o)
       X4 = ddot(wf%n_v*wf%n_o, d_ov, 1, ct_vo_21, 1)
       call daxpy(wf%n_v*wf%n_o, two*X4, s_vo, 1, rho_vo, 1)
-      call mem%alloc(cu_vovo_1243, wf%n_v, wf%n_o, wf%n_o, wf%n_v)
-      call sort_to_1243(cu_vovo, cu_vovo_1243, wf%n_v, wf%n_o, wf%n_v, wf%n_o)
+      call mem%alloc(d_ov_21, wf%n_v, wf%n_o)
+      call sort_to_21(d_ov, d_ov_21, wf%n_o, wf%n_v)
 !
       call dgemv('N', &
                  wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
                  two*γ₁, &
-                 cu_vovo_1243, &
+                 cu_vovo, &
                  wf%n_v*wf%n_o, &
-                 d_ov, 1, &
+                 d_ov_21, 1, &
                  one, &
                  rho_vo, 1)
 !
-      call mem%dealloc(cu_vovo_1243)
+      call mem%dealloc(d_ov_21)
       call mem%alloc(d_ov_21, wf%n_v, wf%n_o)
       call sort_to_21(d_ov, d_ov_21, wf%n_o, wf%n_v)
 !
