@@ -1,32 +1,50 @@
 let
     reset_state()
-    rho_vo = "rho_vo" => ("v", "o") => (1:2...,)
-    cγ = Sym("cγ")
-    d_vo = "d_vo" => ("v", "o") => (1:2...,)
-    cs_vo = "cs_vo" => ("v", "o") => (1:2...,)
-    d_oo = "d_oo" => ("o", "o") => (1:2...,)
-    d_vv = "d_vv" => ("v", "v") => (1:2...,)
-    ct_vo = "ct_vo" => ("v", "o") => (1:2...,)
-    γ₁ = Sym("γ₁")
-    cv_vovo = "cv_vovo" => ("v", "o", "v", "o") => (1:4...,)
-    d_ov = "d_ov" => ("o", "v") => (1:2...,)
-    s_vo = "s_vo" => ("v", "o") => (1:2...,)
-    cu_vovo = "cu_vovo" => ("v", "o", "v", "o") => (1:4...,)
-    u_vovo = "u_vovo" => ("v", "o", "v", "o") => (1:4...,)
-    @tensor opt=(a=>10χ,b=>10χ,i=>χ,j=>χ) backend=eTbackend begin
-        rho_vo[a,i] += cγ*d_vo[a,i]
-        rho_vo[a,i] += 2*cs_vo[a,i]*d_oo[j,j]
-        rho_vo[a,i] += -cs_vo[a,j]*d_oo[j,i]
-        rho_vo[a,i] += cs_vo[b,i]*d_vv[a,b]
-        rho_vo[a,i] += -ct_vo[a,j]*d_oo[j,i]*γ₁
-        rho_vo[a,i] += ct_vo[b,i]*d_vv[a,b]*γ₁
-        rho_vo[a,i] += 2*cv_vovo[a,i,b,j]*d_ov[j,b]
-        rho_vo[a,i] += -ct_vo[a,j]*d_ov[j,b]*s_vo[b,i]
-        rho_vo[a,i] += -ct_vo[b,i]*d_ov[j,b]*s_vo[a,j]
-        rho_vo[a,i] += 2*ct_vo[b,j]*d_ov[j,b]*s_vo[a,i]
-        rho_vo[a,i] += 2*cu_vovo[a,i,b,j]*d_ov[j,b]*γ₁
-        rho_vo[a,i] += cγ*d_ov[j,b]*u_vovo[a,i,b,j]
+    rho_vovo = output_tensor("rho_vovo", ("v", "o", "v", "o"))
+    ct_vovo = input_tensor("ct_vovo", ("v", "o", "v", "o"))
+    d_oo = input_tensor("d_oo", ("o", "o"))
+    d_vv = input_tensor("d_vv", ("v", "v"))
+    cs_vo = input_tensor("cs_vo", ("v", "o"))
+    s_vo = noio_tensor("wf%s1", ("v", "o"))
+    cs_vovo = input_tensor("cs_vovo", ("v", "o", "v", "o"))
+    γ₁ = Sym("wf%s0")
+    cγ = input_scalar("cs")
+    s_vovo = input_tensor("s_vovo", ("v", "o", "v", "o"))
+    d_ov = input_tensor("d_ov", ("o", "v"))
+    v_vovo = input_tensor("v_vovo", ("v", "o", "v", "o"))
+    ct_vo = input_tensor("ct_vo", ("v", "o"))
+    t_vovo = input_tensor("t_vovo", ("v", "o", "v", "o"))
+    cv_vovo = input_tensor("cv_vovo", ("v", "o", "v", "o"))
+    @tensor opt=(a=>10χ,b=>10χ,c=>10χ,i=>χ,j=>χ,k=>χ) backend=eTbackend begin
+        rho_vovo[a,i,b,j] += -2*ct_vovo[a,i,b,k]*d_oo[k,j]
+        rho_vovo[a,i,b,j] += 2*ct_vovo[a,i,c,j]*d_vv[b,c]
+        rho_vovo[a,i,b,j] += cs_vo[a,i]*d_vv[b,c]*s_vo[c,j]
+        rho_vovo[a,i,b,j] += -cs_vo[a,i]*d_oo[k,j]*s_vo[b,k]
+        rho_vovo[a,i,b,j] += -cs_vo[a,k]*d_oo[k,i]*s_vo[b,j]
+        rho_vovo[a,i,b,j] += cs_vo[c,i]*d_vv[a,c]*s_vo[b,j]
+        rho_vovo[a,i,b,j] += -2*cs_vovo[a,i,b,k]*d_oo[k,j]*γ₁
+        rho_vovo[a,i,b,j] += 2*cs_vovo[a,i,c,j]*d_vv[b,c]*γ₁
+        rho_vovo[a,i,b,j] += cγ*d_vv[a,c]*s_vovo[b,j,c,i]
+        rho_vovo[a,i,b,j] += -cγ*d_oo[k,i]*s_vovo[a,k,b,j]
+        rho_vovo[a,i,b,j] += -4*cs_vovo[a,i,b,k]*d_ov[k,c]*s_vo[c,j]
+        rho_vovo[a,i,b,j] += -4*cs_vovo[a,i,c,j]*d_ov[k,c]*s_vo[b,k]
+        rho_vovo[a,i,b,j] += -2*cs_vo[a,k]*d_ov[k,c]*s_vovo[b,j,c,i]
+        rho_vovo[a,i,b,j] += -2*cs_vo[c,i]*d_ov[k,c]*s_vovo[a,k,b,j]
+        rho_vovo[a,i,b,j] += cs_vo[a,i]*d_ov[k,c]*v_vovo[b,j,c,k]
+        rho_vovo[a,i,b,j] += -ct_vo[a,k]*d_ov[k,c]*t_vovo[b,j,c,i]
+        rho_vovo[a,i,b,j] += -ct_vo[c,i]*d_ov[k,c]*t_vovo[a,k,b,j]
+        rho_vovo[a,i,b,j] += 2*cv_vovo[a,i,c,k]*d_ov[k,c]*s_vo[b,j]
+        rho_vovo[a,i,b,j] += -cs_vo[a,k]*d_ov[k,c]*t_vovo[b,j,c,i]*γ₁
+        rho_vovo[a,i,b,j] += -cs_vo[c,i]*d_ov[k,c]*t_vovo[a,k,b,j]*γ₁
+        rho_vovo[a,i,b,j] += -ct_vo[a,k]*d_ov[k,c]*s_vo[b,j]*s_vo[c,i]
+        rho_vovo[a,i,b,j] += -ct_vo[c,i]*d_ov[k,c]*s_vo[a,k]*s_vo[b,j]
+        rho_vovo[a,i,b,j] += -2*ct_vovo[a,i,b,k]*d_ov[k,c]*s_vo[c,j]*γ₁
+        rho_vovo[a,i,b,j] += -2*ct_vovo[a,i,c,j]*d_ov[k,c]*s_vo[b,k]*γ₁
+        rho_vovo[a,i,b,j] += -ct_vo[a,k]*d_ov[k,c]*s_vovo[b,j,c,i]*γ₁
+        rho_vovo[a,i,b,j] += -ct_vo[c,i]*d_ov[k,c]*s_vovo[a,k,b,j]*γ₁
+        rho_vovo[a,i,b,j] += -cγ*d_ov[k,c]*s_vo[a,k]*t_vovo[b,j,c,i]
+        rho_vovo[a,i,b,j] += -cγ*d_ov[k,c]*s_vo[c,i]*t_vovo[a,k,b,j]
     end
-    finalize_eT_function("jacobian_qed_ccsd_bilinear_t1", "qed_ccsd")
+    finalize_eT_function("jacobian_qed_ccsd_bilinear_s2", "qed_ccsd")
 end
 

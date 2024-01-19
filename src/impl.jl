@@ -8,8 +8,8 @@ include("eT_utils.jl")
 n_intermediates::Int = 0
 
 code_body::IOBuffer = IOBuffer()
-output_parameters::Vector = []
-input_parameters::Vector = []
+output_parameters::Vector{Pair} = []
+input_parameters::Vector{Pair} = []
 local_variables::Vector{Tuple{String,Int}} = Tuple{String,Int}[]
 n_integers::Int = 0
 use_ddot::Bool = false
@@ -27,11 +27,38 @@ function reset_state()
     empty!(local_variables)
 end
 
+function input_scalar(s)
+    push!(input_parameters, s => () => ())
+    Sym(s)
+end
+
+function input_tensor(name, structure)
+    tens = name => structure => (1:length(structure)...,)
+    push!(input_parameters, tens)
+    tens
+end
+
+function output_scalar(s)
+    push!(output_parameters, s => () => ())
+    Sym(s)
+end
+
+function output_tensor(name, structure)
+    tens = name => structure => (1:length(structure)...,)
+    push!(output_parameters, tens)
+    tens
+end
+
+function noio_tensor(name, structure)
+    name => structure => (1:length(structure)...,)
+end
+
 TensorOperations.scalartype(::Pair) = Float64
 function TensorOperations.tensorscalar(p::Pair)
     n, (s, _) = p
     Sym(n)
 end
+
 function TensorOperations.tensorscalar(p::Sym)
     p
 end
@@ -102,12 +129,7 @@ function finalize_eT_function(routine_name, wf_type="ccs")
     for (params, intent) in ((output_parameters, "out"), (input_parameters, "in"))
         structure_dict = Dict()
 
-        for param in params
-            name, (structure, _) = if param isa Sym
-                string(param), ((), ())
-            else
-                param
-            end
+        for (name, (structure, _)) in params
             if !haskey(structure_dict, structure)
                 structure_dict[structure] = String[]
             end
@@ -317,14 +339,6 @@ function TensorOperations.tensoradd!(C, pC,
     A_loc = (nA, length(sA))
     C_loc = (nC, length(sC))
 
-    if A_loc ∉ local_variables && A ∉ input_parameters
-        push!(input_parameters, A)
-    end
-
-    if C_loc ∉ local_variables && C ∉ output_parameters
-        push!(output_parameters, C)
-    end
-
     dimstr = get_dimstr(sA)
 
     if iszero(β) && !isone(α)
@@ -388,14 +402,6 @@ function TensorOperations.tensortrace!(C, pC,
 
     A_loc = (nA, length(sA))
     C_loc = (nC, length(sC))
-
-    if A_loc ∉ local_variables && A ∉ input_parameters
-        push!(input_parameters, A)
-    end
-
-    if C_loc ∉ local_variables && C ∉ output_parameters
-        push!(output_parameters, C)
-    end
 
     used_inds = 0
     input_inds = zeros(Int, length(sA))
@@ -694,18 +700,6 @@ function eT_contract(C, pC,
     A_loc = (nA, length(sA))
     B_loc = (nB, length(sB))
     C_loc = (nC, length(sC))
-
-    if A_loc ∉ local_variables && A ∉ input_parameters
-        push!(input_parameters, A)
-    end
-
-    if B_loc ∉ local_variables && B ∉ input_parameters
-        push!(input_parameters, B)
-    end
-
-    if C_loc ∉ local_variables && C ∉ output_parameters
-        push!(output_parameters, C)
-    end
 
     pA = compose_iperms(pA, lpA)
     pB = compose_iperms(pB, lpB)

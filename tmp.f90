@@ -1,4 +1,4 @@
-   subroutine jacobian_qed_ccsd_bilinear_t1(wf, rho_vo, d_vo, d_oo, cs_vo, d_vv, ct_vo, d_ov, cv_vovo, s_vo, cu_vovo, u_vovo)
+   subroutine jacobian_qed_ccsd_bilinear_t1(wf, rho_vo, cs, d_vo, cs_vo, d_oo, d_vv, ct_vo, cv_vovo, d_ov, cu_vovo)
 !!
 !! Generated function
 !!
@@ -8,11 +8,12 @@
 !
       real(dp), dimension(wf%n_v,wf%n_o), intent(out) :: rho_vo
 !
+      real(dp), intent(in) :: cs
       real(dp), dimension(wf%n_o,wf%n_o), intent(in) :: d_oo
       real(dp), dimension(wf%n_o,wf%n_v), intent(in) :: d_ov
-      real(dp), dimension(wf%n_v,wf%n_o), intent(in) :: d_vo, cs_vo, ct_vo, s_vo
+      real(dp), dimension(wf%n_v,wf%n_o), intent(in) :: d_vo, cs_vo, ct_vo
       real(dp), dimension(wf%n_v,wf%n_v), intent(in) :: d_vv
-      real(dp), dimension(wf%n_v,wf%n_o,wf%n_v,wf%n_o), intent(in) :: cv_vovo, cu_vovo, u_vovo
+      real(dp), dimension(wf%n_v,wf%n_o,wf%n_v,wf%n_o), intent(in) :: cv_vovo, cu_vovo
 !
       real(dp) :: X1, X4
 !
@@ -21,7 +22,7 @@
       integer :: i1
       real(dp), external :: ddot
 !
-      call daxpy(wf%n_v*wf%n_o, cγ, d_vo, 1, rho_vo, 1)
+      call daxpy(wf%n_v*wf%n_o, cs, d_vo, 1, rho_vo, 1)
       X1 = zero
 !
 !$omp parallel do schedule(static) private(i1)
@@ -64,7 +65,7 @@
                  wf%n_v, &
                  wf%n_o, &
                  wf%n_o, &
-                 -γ₁, &
+                 -wf%s0, &
                  ct_vo, &
                  wf%n_v, &
                  d_oo, &
@@ -78,7 +79,7 @@
                  wf%n_v, &
                  wf%n_o, &
                  wf%n_v, &
-                 γ₁, &
+                 wf%s0, &
                  d_vv, &
                  wf%n_v, &
                  ct_vo, &
@@ -108,7 +109,7 @@
                  wf%n_o, &
                  wf%n_v, &
                  one, &
-                 s_vo, &
+                 wf%s1, &
                  wf%n_v, &
                  d_ov, &
                  wf%n_o, &
@@ -152,7 +153,7 @@
                  wf%n_o, &
                  wf%n_o, &
                  one, &
-                 s_vo, &
+                 wf%s1, &
                  wf%n_v, &
                  X3_oo, &
                  wf%n_o, &
@@ -164,14 +165,14 @@
       call mem%alloc(ct_vo_21, wf%n_o, wf%n_v)
       call sort_to_21(ct_vo, ct_vo_21, wf%n_v, wf%n_o)
       X4 = ddot(wf%n_v*wf%n_o, d_ov, 1, ct_vo_21, 1)
-      call daxpy(wf%n_v*wf%n_o, two*X4, s_vo, 1, rho_vo, 1)
+      call daxpy(wf%n_v*wf%n_o, two*X4, wf%s1, 1, rho_vo, 1)
       call mem%alloc(d_ov_21, wf%n_v, wf%n_o)
       call sort_to_21(d_ov, d_ov_21, wf%n_o, wf%n_v)
 !
       call dgemv('N', &
                  wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
-                 two*γ₁, &
+                 two*wf%s0, &
                  cu_vovo, &
                  wf%n_v*wf%n_o, &
                  d_ov_21, 1, &
@@ -185,8 +186,8 @@
       call dgemv('N', &
                  wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
-                 cγ, &
-                 u_vovo, &
+                 cs, &
+                 wf%u_aibj, &
                  wf%n_v*wf%n_o, &
                  d_ov_21, 1, &
                  one, &

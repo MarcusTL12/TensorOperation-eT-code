@@ -282,9 +282,9 @@ function test21()
     E = "E" => () => ()
     d = "d" => ("o", "o") => (1, 2)
 
-    γ = Sym("gamma")
-
     reset_state()
+    
+    γ = input_scalar("gamma")
 
     @tensor backend=eTbackend begin
         E[] = γ * d[i, i]
