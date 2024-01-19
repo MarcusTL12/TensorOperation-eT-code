@@ -358,6 +358,17 @@ function TensorOperations.tensortrace!(C, pC,
     @assert issorted(lpA)
     @assert issorted(lpC)
 
+    A_loc = (nA, length(sA))
+    C_loc = (nC, length(sC))
+
+    if A_loc ∉ local_variables && A ∉ input_parameters
+        push!(input_parameters, A)
+    end
+
+    if C_loc ∉ local_variables && C ∉ output_parameters
+        push!(output_parameters, C)
+    end
+
     used_inds = 0
     input_inds = zeros(Int, length(sA))
 
