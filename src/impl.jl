@@ -10,6 +10,7 @@ code_body::IOBuffer = IOBuffer()
 output_parameters::Vector{Pair} = Pair[]
 input_parameters::Vector{Pair} = Pair[]
 local_variables::Vector{Tuple{String,Int}} = Tuple{String,Int}[]
+n_integers::Int = 0
 use_ddot::Bool = false
 
 function reset_state()
@@ -17,6 +18,8 @@ function reset_state()
     n_intermediates = 0
     global use_ddot
     use_ddot = false
+    global n_integers
+    n_integers = 0
     take!(code_body)
     empty!(output_parameters)
     empty!(input_parameters)
@@ -32,6 +35,10 @@ end
 function Base.:*(p::Pair{String,Pair{Tuple{},Tuple{}}}, s::String)
     n, _ = p
     "$n*$s"
+end
+
+function Base.:*(p::Pair{String,Pair{Tuple{},Tuple{}}}, ::TensorOperations.VectorInterface.One)
+    p.first
 end
 
 function Base.:*(a::Int, b::String)
@@ -169,8 +176,23 @@ function finalize_eT_function(routine_name, wf_type="ccs")
             end
             print(io, name)
         end
-        println(io, "")
+        println(io, "\n!")
     end
+
+    if n_integers > 0
+        print(io, "      integer :: ")
+        isfirst = true
+        for i in 1:n_integers
+            if isfirst
+                isfirst = false
+            else
+                print(io, ", ")
+            end
+            print(io, "i$i")
+        end
+    end
+
+    println(io, "")
 
     if use_ddot
         println(io, "      real(dp), external :: ddot")
@@ -263,8 +285,11 @@ function TensorOperations.tensoradd!(C, pC,
 
     p = linearize(pC)
 
-    nA, (sA, _) = A
-    nC, (sC, _) = C
+    nA, (sA, lpA) = A
+    nC, (sC, lpC) = C
+
+    @assert issorted(lpA)
+    @assert issorted(lpC)
 
     A_loc = (nA, length(sA))
     C_loc = (nC, length(sC))
@@ -321,6 +346,111 @@ function TensorOperations.tensortrace!(C, pC,
     println("\nTracing C = α * tr(A) + β * C")
     @show A C α β pA pC
     println()
+
+    n_loop_indices = length(linearize(pC)) + length(pA[1])
+
+    global n_integers
+    n_integers = max(n_integers, n_loop_indices)
+
+    nA, (sA, lpA) = A
+    nC, (sC, lpC) = C
+
+    @assert issorted(lpA)
+    @assert issorted(lpC)
+
+    used_inds = 0
+    input_inds = zeros(Int, length(sA))
+
+    for i in linearize(pC)
+        used_inds += 1
+        input_inds[i] = used_inds
+    end
+
+    for (i, j) in zip(pA...)
+        used_inds += 1
+        input_inds[i] = input_inds[j] = used_inds
+    end
+
+    input_ind_dims = ["" for _ in 1:n_loop_indices]
+    for (i, j) in enumerate(input_inds)
+        input_ind_dims[j] = eT_dim_dict[sA[i]]
+    end
+
+    tab_level = 2
+
+    dimstr = get_dimstr(TupleTools.getindices(sA, linearize(pC)))
+
+    if !iszero(β) && !isone(β)
+        if isempty(linearize(pC))
+            print(code_body, "      $nC = $nC * ", make_eT_num(β))
+        else
+            print(code_body, "      call dscal($dimstr, $(make_eT_num(β)), $nC, 1)")
+        end
+    elseif iszero(β)
+        if isempty(linearize(pC))
+            println(code_body, "      $nC = zero")
+        else
+            println(code_body, "      call zero_array($nC, $dimstr)")
+        end
+    end
+
+    println(code_body, "!")
+
+    for i in reverse(1:n_loop_indices)
+        println(code_body, "   "^tab_level, "do i$i = 1, ", input_ind_dims[i])
+        tab_level += 1
+    end
+
+    out_string = IOBuffer()
+
+    print(out_string, "$nC")
+    if !isempty(linearize(pC))
+        print(out_string, "(")
+        isfirst = true
+        for i in linearize(pC)
+            if isfirst
+                isfirst = false
+            else
+                print(out_string, ",")
+            end
+            print(out_string, "i$(input_inds[i])")
+        end
+        print(out_string, ")")
+    end
+
+    out_string = String(take!(out_string))
+
+    print(code_body, "   "^tab_level, out_string, " = ")
+
+    print(code_body, out_string, " + ")
+
+    if !isone(α)
+        if isone(-α)
+            print(code_body, "-")
+        else
+            print(code_body, make_eT_num(α), "*")
+        end
+    end
+
+    print(code_body, "$nA(")
+
+    isfirst = true
+    for i in input_inds
+        if isfirst
+            isfirst = false
+        else
+            print(code_body, ",")
+        end
+        print(code_body, "i$i")
+    end
+    println(code_body, ")")
+
+    for i in 1:n_loop_indices
+        tab_level -= 1
+        println(code_body, "   "^tab_level, "end do")
+    end
+
+    println(code_body, "!")
 
     C
 end
@@ -446,6 +576,12 @@ function TensorOperations.tensorcontract!(C, pC,
     rpC = (TupleTools.getindices(indCinoBA, tpC[1]),
         TupleTools.getindices(indCinoBA, tpC[2]))
 
+    # if isempty(linearize(pA))
+    #     return TensorOperations.tensoradd!(C, pC, B, conjB, A * α, β, backend)
+    # elseif isempty(linearize(pB))
+    #     return TensorOperations.tensoradd!(C, pC, A, conjA, B * α, β, backend)
+    # end
+
     if TensorOperations.tensorcontract_structure(pC, A, pA, conjA, B, pB, conjB)[2]
         eT_contract(C, pC, A, pA, B, pB, α, β, backend)
     elseif TensorOperations.tensorcontract_structure(rpC, B, rpB, conjB, A, rpA, conjA)[2]
@@ -498,6 +634,48 @@ function eT_contract(C, pC,
 
     nB_sort, (sB_sort, _) = B_sort
 
+    outdim1 = get_dimstr(TupleTools.getindices(sA, pA[1]))
+    outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
+    contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
+
+    lda = get_dimstr(TupleTools.getindices(sA_sort, pA[A_T ? 2 : 1]))
+    ldb = get_dimstr(TupleTools.getindices(sB_sort, pB[B_T ? 2 : 1]))
+    ldc = outdim1
+
+    A_T_str = A_T ? "'T'" : "'N'"
+    B_T_str = B_T ? "'T'" : "'N'"
+
+    # Check if we get away with ddot or add
+
+    if outdim1 == "" && outdim2 == ""
+        global use_ddot
+        use_ddot = true
+        println("Using ddot")
+        print(code_body, "      $nC = ")
+        if !iszero(β)
+            if !isone(β)
+                print(code_body, "$(make_eT_num(β)) * ")
+            end
+            print(code_body, "$nC + ")
+        end
+
+        if !isone(α)
+            print(code_body, "$(make_eT_num(α)) * ")
+        end
+        println(code_body, "ddot($contdim, $nA_sort, 1, $nB_sort, 1)")
+        return C
+    elseif contdim == "" && outdim2 == ""
+        println("Using tensoradd")
+
+        TensorOperations.tensoradd!(C, pC, A_sort, :N, B * α, β, backend)
+        return C
+    elseif contdim == "" && outdim1 == ""
+        println("Using tensoradd")
+
+        TensorOperations.tensoradd!(C, pC, B_sort, :N, A * α, β, backend)
+        return C
+    end
+
     # Checking if output must be sorted
 
     ipC = invperm(linearize(pC))
@@ -518,44 +696,14 @@ function eT_contract(C, pC,
 
         eT_alloc(nC_pre => sC_pre)
 
-        nC_pre => sC_pre => :N
+        nC_pre => sC_pre => (1:length(sC_pre)...,)
     end
 
     nC_out, (sC_out, _) = C_pre
 
     # Doing the contraction
 
-    outdim1 = get_dimstr(TupleTools.getindices(sA, pA[1]))
-    outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
-    contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
-
-    lda = get_dimstr(TupleTools.getindices(sA_sort, pA[A_T ? 2 : 1]))
-    ldb = get_dimstr(TupleTools.getindices(sB_sort, pB[B_T ? 2 : 1]))
-    ldc = outdim1
-
-    A_T_str = A_T ? "'T'" : "'N'"
-    B_T_str = B_T ? "'T'" : "'N'"
-
-    # Bodge to use dgemm for everything
-    # TODO: recognize when to use dgemv, ddot and dger
-
-    if outdim1 == "" && outdim2 == ""
-        global use_ddot
-        use_ddot = true
-        println("Using ddot")
-        print(code_body, "      $nC_out = ")
-        if !iszero(β)
-            if !isone(β)
-                print(code_body, "$(make_eT_num(β)) * ")
-            end
-            print(code_body, "$nC_out + ")
-        end
-
-        if !isone(α)
-            print(code_body, "$(make_eT_num(α)) * ")
-        end
-        println(code_body, "ddot($contdim, $nA_sort, 1, $nB_sort, 1)")
-    elseif contdim == ""
+    if contdim == ""
         println("Using dger")
 
         if !isone(β)

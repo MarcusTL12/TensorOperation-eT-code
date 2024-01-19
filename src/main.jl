@@ -239,3 +239,28 @@ function test17()
         C[i, j, k, l] = A[i, j, a] * B[l, k, a]
     end
 end
+
+function test18()
+    F = "F" => ("g", "g") => (1, 2)
+    h = "h" => ("g", "g") => (1, 2)
+    g_ggoo = "g_ggoo" => ("g", "g", "o", "o") => (1, 2, 3, 4)
+    g_goog = "g_goog" => ("g", "o", "o", "g") => (1, 2, 3, 4)
+
+    reset_state()
+
+    @tensor backend=eTbackend begin
+        F[p, q] = h[p, q] + 2 * g_ggoo[q, p, i, i] - g_goog[q, i, i, p]
+    end
+end
+
+function test19()
+    F = "F" => ("v", "o") => (1, 2)
+    h = "h" => ("o", "v") => (1, 2)
+    d = "d" => ("o", "o") => (1, 2)
+
+    reset_state()
+
+    @tensor backend=eTbackend begin
+        F[a, i] = h[i, a] * d[j, j]
+    end
+end
