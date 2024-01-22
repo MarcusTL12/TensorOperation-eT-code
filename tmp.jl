@@ -17,7 +17,7 @@ let
     cv_vovo = input_tensor("cv_vovo", ("v", "o", "v", "o"))
     @tensor opt=(a=>10χ,b=>10χ,c=>10χ,i=>χ,j=>χ,k=>χ) backend=eTbackend begin
         rho_vovo[a,i,b,j] += -2*ct_vovo[a,i,b,k]*d_oo[k,j]
-        rho_vovo[a,i,b,j] += 2*ct_vovo[a,i,c,j]*d_vv[b,c]
+        rho_vovo[b,j,a,i] += 2*ct_vovo[c,j,a,i]*d_vv[b,c]
         rho_vovo[a,i,b,j] += cs_vo[a,i]*d_vv[b,c]*s_vo[c,j]
         rho_vovo[a,i,b,j] += -cs_vo[a,i]*d_oo[k,j]*s_vo[b,k]
         rho_vovo[a,i,b,j] += -cs_vo[a,k]*d_oo[k,i]*s_vo[b,j]

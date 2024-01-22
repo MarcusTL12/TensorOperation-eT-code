@@ -615,7 +615,7 @@ function sort_tensor_input(A, pA, backend)
 
         A_sort = nA_sort => sA_sort => (1:length(linearize(pA))...,)
 
-        TensorOperations.tensoradd!(A_sort, pA, A, :N, 1, 0, backend)
+        TensorOperations.tensoradd!(A_sort, pA, nA => (sA, (1:length(linearize(pA))...,)), :N, 1, 0, backend)
 
         A_sort, do_trans, true
     end
@@ -803,6 +803,8 @@ function eT_contract(C, pC,
 
     explicit_sort_output = false
 
+    β_out = β
+
     C_pre = if issorted(linearize(pC))
         println("Output is sorted")
         C
@@ -810,6 +812,8 @@ function eT_contract(C, pC,
         println("Output not sorted, need to allocate tmp output!")
 
         explicit_sort_output = true
+
+        β = 0
 
         nC_pre = nC * "_" * prod(string, ipC)
 
@@ -921,7 +925,7 @@ function eT_contract(C, pC,
     if explicit_sort_output
         println("Sorting output")
 
-        TensorOperations.tensoradd!(C, pC, C_pre, :N, 1, 0, backend)
+        TensorOperations.tensoradd!(C, pC, C_pre, :N, 1, β_out, backend)
 
         TensorOperations.tensorfree!(C_pre)
     end
