@@ -92,6 +92,11 @@ end
 function finalize_eT_function(routine_name, wf_type="ccs")
     io = IOBuffer()
 
+    routine_name = "$(routine_name)_$(wf_type)"
+
+    sort!(output_parameters)
+    sort!(input_parameters)
+
     print(io, "   subroutine $routine_name(wf")
 
     for param in output_parameters
@@ -126,7 +131,7 @@ function finalize_eT_function(routine_name, wf_type="ccs")
 
     println(io, "      class($wf_type), intent(in) :: wf\n!")
 
-    for (params, intent) in ((output_parameters, "out"), (input_parameters, "in"))
+    for (params, intent) in ((output_parameters, "inout"), (input_parameters, "in"))
         structure_dict = Dict()
 
         for (name, (structure, _)) in params
@@ -333,8 +338,8 @@ function TensorOperations.tensoradd!(C, pC,
     nA, (sA, lpA) = A
     nC, (sC, lpC) = C
 
-    @assert issorted(lpA)
-    @assert issorted(lpC)
+    # @assert issorted(lpA)
+    # @assert issorted(lpC)
 
     A_loc = (nA, length(sA))
     C_loc = (nC, length(sC))
@@ -607,9 +612,9 @@ function sort_tensor_input(A, pA, backend)
 
         println("$A not sorted, need to allocate tmp storage")
 
-        nA_sort = nA * "_" * prod(string, linearize(pA))
-
         sA_sort = TupleTools.getindices(sA, linearize(pA))
+
+        nA_sort = get_intermediate_name(sA_sort)
 
         eT_alloc(nA_sort => sA_sort)
 
@@ -741,14 +746,16 @@ function eT_contract(C, pC,
     outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
     contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
 
-    lda = get_dimstr(TupleTools.getindices(sA_sort, pA[A_T ? 2 : 1]))
-    ldb = get_dimstr(TupleTools.getindices(sB_sort, pB[B_T ? 2 : 1]))
+    lda = get_dimstr(TupleTools.getindices(sA, pA[A_T ? 2 : 1]))
+    ldb = get_dimstr(TupleTools.getindices(sB, pB[B_T ? 2 : 1]))
     ldc = outdim1
 
     A_T_str = A_T ? "'T'" : "'N'"
     B_T_str = B_T ? "'T'" : "'N'"
 
     # Check if we get away with ddot or add
+
+    return_early = false
 
     if outdim1 == "" && outdim2 == "" && contdim == ""
         println("Scalar scalar multiplication")
@@ -767,7 +774,7 @@ function eT_contract(C, pC,
         end
 
         println(code_body, "$nA_sort*$nB_sort")
-        return C
+        return_early = true
     elseif outdim1 == "" && outdim2 == ""
         global use_ddot
         use_ddot = true
@@ -784,16 +791,28 @@ function eT_contract(C, pC,
             print(code_body, "$(make_eT_num(α)) * ")
         end
         println(code_body, "ddot($contdim, $nA_sort, 1, $nB_sort, 1)")
-        return C
+        return_early = true
     elseif contdim == "" && outdim2 == ""
         println("Using tensoradd")
 
         TensorOperations.tensoradd!(C, pC, A_sort, :N, Sym(nB) * α, β, backend)
-        return C
+        return_early = true
     elseif contdim == "" && outdim1 == ""
         println("Using tensoradd")
 
         TensorOperations.tensoradd!(C, pC, B_sort, :N, Sym(nA) * α, β, backend)
+        return_early = true
+    end
+
+    if return_early
+        if A_alloc
+            TensorOperations.tensorfree!(A_sort)
+        end
+
+        if B_alloc
+            TensorOperations.tensorfree!(B_sort)
+        end
+
         return C
     end
 
@@ -849,12 +868,11 @@ function eT_contract(C, pC,
                     $(make_eT_num(α)), &
                     $nA_sort, 1, &
                     $nB_sort, 1, &
-                    $nC_out, 1)
+                    $nC_out, $ldc)
     !""")
     elseif outdim1 == ""
         println("Using left dgemv")
 
-        m = B_T ? outdim2 : contdim
         n = B_T ? contdim : outdim2
 
         T_str = B_T ? "'N'" : "'T'"
@@ -864,7 +882,7 @@ function eT_contract(C, pC,
             """
     !
           call dgemv($T_str, &
-                     $m, &
+                     $ldb, &
                      $n, &
                      $(make_eT_num(α)), &
                      $nB_sort, &
@@ -876,15 +894,14 @@ function eT_contract(C, pC,
     elseif outdim2 == ""
         println("Using right dgemv")
 
-        m = A_T ? outdim1 : contdim
-        n = A_T ? contdim : outdim1
+        n = A_T ? outdim1 : contdim
 
         println(
             code_body,
             """
     !
           call dgemv($A_T_str, &
-                     $m, &
+                     $lda, &
                      $n, &
                      $(make_eT_num(α)), &
                      $nA_sort, &

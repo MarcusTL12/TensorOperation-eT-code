@@ -287,7 +287,7 @@ function test21()
     γ = input_scalar("gamma")
 
     @tensor backend=eTbackend begin
-        E[] = γ * d[i, i]
+        E[] = 2 * d[i, j] * 3 * d[j, i]
     end
 end
 
@@ -312,5 +312,17 @@ function test23()
 
     @tensor opt=(a=>10χ,b=>10χ,i=>χ,j=>χ) backend=eTbackend begin
         C[a, i] += A[b, i] * B[a, b]
+    end
+end
+
+function test24()
+    reset_state()
+
+    rho_vovo = output_tensor("rho_vovo", ("v", "o", "v", "o"))
+    cs_vovo = input_tensor("cs_vovo", ("v", "o", "v", "o"))
+    d_vv = input_tensor("d_vv", ("v", "v"))
+
+    @tensor backend = eTbackend begin
+        rho_vovo[a,i,b,j] += 2*cs_vovo[a,i,c,j]*d_vv[b,c]
     end
 end

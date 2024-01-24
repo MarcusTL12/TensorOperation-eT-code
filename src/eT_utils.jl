@@ -88,6 +88,12 @@ function make_eT_num_sym_single_term(x::Sym)
     else
         rest_str = replace(string(rest), "^" => "**")
 
+        if startswith(rest_str, "-")
+            rest_str = rest_str[2:end]
+            "-"
+        else
+            ""
+        end *
         if !isone(pref)
             "$(make_eT_num_words(pref))*$rest_str"
         else
