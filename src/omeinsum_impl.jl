@@ -219,7 +219,7 @@ function compute_sorting_complexity(costdict, inds, perm)
 
     cost = prod(costdict[i] for i in inds)
 
-    contiguous_penalty = 2
+    contiguous_penalty = 1
 
     if issorted(perm)
         0
@@ -232,6 +232,7 @@ end
 
 function compute_sorting_complexity(costdict::Dict{T,C},
     choices::Vector{NTuple{4,Vector{Int}}},
+    input_perms::Vector{Vector{Int}},
     steps::Vector{Step{T}}) where {T,C}
     intermediates_order = Dict{Int,Vector{T}}()
 
@@ -240,13 +241,13 @@ function compute_sorting_complexity(costdict::Dict{T,C},
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
         ((nameout, indsout), ((name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
         inds1 = if name1[1]
-            _inds1
+            @view _inds1[input_perms[name1[2]]]
         else
             intermediates_order[name1[2]]
         end
 
         inds2 = if name2[1]
-            _inds2
+            @view _inds2[input_perms[name2[2]]]
         else
             intermediates_order[name2[2]]
         end
@@ -343,38 +344,49 @@ function choices_iter(num_choices::Vector{NTuple{4,Int}})
     Iterators.product((choices_iter(nc) for nc in num_choices)...)
 end
 
-function optimize_choices(costdict::Dict{T,C}, steps::Vector{Step{T}}) where {T,C}
+function optimize_choices(costdict::Dict{T,C}, steps::Vector{Step{T}},
+    inputperms::Vector{Vector{Vector{Int}}}) where {T,C}
     best_choice = nothing
+    best_perms = nothing
     best_score = nothing
 
-    for choices in choices_iter(get_num_choices(steps))
-        choices_vec = collect(choices)
+    for permchoices in Iterators.product(inputperms...)
+        permchoices_vec = collect(permchoices)
+        for choices in choices_iter(get_num_choices(steps))
+            choices_vec = collect(choices)
 
-        score = compute_sorting_complexity(costdict, choices_vec, steps)
+            score = compute_sorting_complexity(costdict, choices_vec, permchoices_vec, steps)
 
-        if isnothing(best_score) || score < best_score
-            best_score = score
-            best_choice = choices_vec
+            if isnothing(best_score) || score < best_score
+                best_score = score
+                best_choice = choices_vec
+                best_perms = permchoices_vec
+            end
         end
     end
 
-    best_choice, best_score
+    best_choice, best_perms, best_score
+end
+
+function make_trivial_inputperms(code)
+    [[collect(eachindex(ix))] for ix in getixsv(code)]
 end
 
 function make_code(choices::Vector{NTuple{4,Vector{Int}}},
+    input_perms::Vector{Vector{Int}},
     steps::Vector{Step{T}}) where {T}
     intermediates_order = Dict{Int,Vector{T}}()
 
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
         ((nameout, indsout), ((name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
         inds1 = if name1[1]
-            _inds1
+            @view _inds1[input_perms[name1[2]]]
         else
             intermediates_order[name1[2]]
         end
 
         inds2 = if name2[1]
-            _inds2
+            @view _inds2[input_perms[name2[2]]]
         else
             intermediates_order[name2[2]]
         end
@@ -468,7 +480,7 @@ function make_code(choices::Vector{NTuple{4,Vector{Int}}},
             end
         end
 
-        if nameout[2] != 0
+        if nameout[2] != 0 || outorder != indsout
             println("Allocating   $((nameout, outorder))")
         end
 
@@ -501,5 +513,6 @@ function make_code(choices::Vector{NTuple{4,Vector{Int}}},
 
     if !issorted(outperm)
         println("Sorting     $((outname, actual_outinds)) -> $((outname, outinds))")
+        println("Deallocating $((outname, actual_outinds))")
     end
 end

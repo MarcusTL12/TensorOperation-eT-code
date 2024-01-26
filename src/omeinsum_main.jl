@@ -2,21 +2,21 @@ using OMEinsum
 
 include("omeinsum_impl.jl")
 
-function test_code(code)
+function test_code(code, inputperms=make_trivial_inputperms(code))
     cost = make_ov_cost(code)
 
-    optcode = optimize_code(code, cost,
-        TreeSA(sc_target=28, βs=0.1:0.1:10, ntrials=2, niters=100, sc_weight=3.0))
+    # optcode = optimize_code(code, cost,
+    #     TreeSA(sc_target=28, βs=0.1:0.1:10, ntrials=2, niters=100, sc_weight=3.0))
 
-    # optcode = optimize_code(code, cost, GreedyMethod())
+    optcode = optimize_code(code, cost, GreedyMethod())
 
     @show optcode
 
     steps = walk_einsums(optcode)
 
-    choices, _ = optimize_choices(cost, steps)
+    choices, perms, _ = optimize_choices(cost, steps, inputperms)
 
-    make_code(choices, steps)
+    make_code(choices, perms, steps)
     println()
 end
 
@@ -62,4 +62,15 @@ end
 
 function test11()
     test_code(ein"(((abcd,ia),jb),kc),ld->ijkl")
+end
+
+function test12()
+    # rho_vovo[a,i,b,j] += 2*cs_vovo[a,i,c,j]*d_vv[b,c]
+    code = ein"aicj,bc->aibj"
+
+    inputperms = make_trivial_inputperms(code)
+
+    push!(inputperms[1], [3, 4, 1, 2])
+
+    test_code(code, inputperms)
 end
