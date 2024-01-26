@@ -2,7 +2,9 @@ using OMEinsum
 
 include("omeinsum_impl.jl")
 
-function test_code(code, inputperms=make_trivial_inputperms(code),
+function test_code(code, names=make_tmp_inputnames(code),
+    outname="X",
+    inputperms=make_trivial_inputperms(code),
     outperms=make_trivial_outperm(code))
     cost = make_ov_cost(code)
 
@@ -21,8 +23,15 @@ function test_code(code, inputperms=make_trivial_inputperms(code),
 
     println()
 
-    make_code(choices, perms, outperm, steps)
+    func = FortranFunction(IOBuffer(), ("", String[]),
+        Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false))
+
+    dimdict = make_ov_dimdict(code)
+
+    make_code!(func, choices, names, perms, outname, outperm, dimdict, steps)
     println()
+
+    println(String(take!(func.code_body)))
 end
 
 function test1()
@@ -40,7 +49,8 @@ function test2()
     outperms = make_trivial_outperm(code)
     push!(outperms, [3, 4, 1, 2])
 
-    test_code(code, inputperms, outperms)
+    test_code(code, [("A", true), ("B", true), ("C", true), ("D", true)], "X",
+        inputperms, outperms)
 end
 
 function test3()

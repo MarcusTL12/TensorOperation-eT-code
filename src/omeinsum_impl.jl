@@ -40,6 +40,42 @@ end
 
 make_ov_cost(code::AbstractEinsum) = uniformsize(code, 10)
 
+function make_ov_dimdict(code::Union{StaticEinCode{Char},DynamicEinCode{Char}})
+    dimdict = Dict{Char,String}()
+    cost = uniformsize(code, 10)
+    for i in keys(cost)
+        dimdict[i] =
+            if i in "pqrstuvw"
+                "g"
+            elseif i in "ijklmno"
+                "o"
+            elseif i in "abcdefgh"
+                "v"
+            end
+    end
+    dimdict
+end
+
+function make_ov_dimdict(code::Union{StaticEinCode{T},DynamicEinCode{T}}) where {T}
+    dimdict = Dict{T,String}()
+    cost = uniformsize(code, 10)
+    for i in keys(cost)
+        dimdict[i] = "g"
+    end
+    dimdict
+end
+
+function make_tmp_inputnames(code)
+    curname = 'A'
+    [
+        begin
+            name = string(curname)
+            curname += 1
+            (name, true)
+        end for _ in getixsv(code)
+    ]
+end
+
 const Tens{T} = Tuple{Tuple{Bool,Int64},Vector{T}} where {T}
 const Step{T} = Pair{Tens{T},NTuple{2,Tens{T}}}
 
@@ -219,7 +255,7 @@ function compute_sorting_complexity(costdict, inds, perm)
 
     cost = prod(costdict[i] for i in inds)
 
-    contiguous_penalty = 1
+    contiguous_penalty = 2
 
     if issorted(perm)
         0
@@ -396,11 +432,88 @@ function make_trivial_outperm(code)
     [collect(eachindex(getiyv(code)))]
 end
 
-function make_code(choices::Vector{NTuple{4,Vector{Int}}},
+function get_dimstr(dims)
+    dimbuf = IOBuffer()
+
+    isfirst = true
+    for d in dims
+        if isfirst
+            isfirst = false
+        else
+            print(dimbuf, ", ")
+        end
+        print(dimbuf, eT_dim_dict[d])
+    end
+
+    String(take!(dimbuf))
+end
+
+function get_compact_dimstr(dims)
+    if isempty(dims)
+        return "1"
+    end
+
+    counts = Dict{String,Int}()
+    for x in dims
+        counts[x] = get(counts, x, 0) + 1
+    end
+
+    dimbuf = IOBuffer()
+
+    isfirst = true
+    for (d, c) in counts
+        if isfirst
+            isfirst = false
+        else
+            print(dimbuf, "*")
+        end
+        print(dimbuf, eT_dim_dict[d])
+        if c > 1
+            print(dimbuf, "**", c)
+        end
+    end
+
+    String(take!(dimbuf))
+end
+
+function get_dims(dimdict, inds)
+    [dimdict[i] for i in inds]
+end
+
+eT_dim_dict::Dict{String,String} = Dict{String,String}([
+    "v" => "wf%n_v",
+    "o" => "wf%n_o",
+    "g" => "wf%n_mo",
+])
+
+struct FortranFunction
+    code_body::IOBuffer
+    output_param::Tuple{String,Vector{String}}
+    input_parameters::Vector{Tuple{String,Vector{String}}}
+    local_variables::Vector{Tuple{String,Vector{String}}}
+    n_integers::Ref{Int}
+    use_ddot::Ref{Bool}
+end
+
+function get_intermediate_name!(func::FortranFunction, dims)
+    i = length(func.local_variables) + 1
+    name = "X$i"
+    push!(func.local_variables, (name, dims))
+    name
+end
+
+function make_code!(func::FortranFunction,
+    choices::Vector{NTuple{4,Vector{Int}}},
+    input_names::Vector{Tuple{String,Bool}},
     input_perms::Vector{Vector{Int}},
+    output_name::String,
     output_perm::Vector{Int},
+    dimdict::Dict{T,String},
     steps::Vector{Step{T}}) where {T}
+
     intermediates_order = Dict{Int,Vector{T}}()
+
+    name_translation = Dict{Tens{T},String}()
 
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
         ((nameout, indsout), ((name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
@@ -414,6 +527,14 @@ function make_code(choices::Vector{NTuple{4,Vector{Int}}},
             @view _inds2[input_perms[name2[2]]]
         else
             intermediates_order[name2[2]]
+        end
+
+        if name1[1]
+            name_translation[(name1, collect(inds1))] = input_names[name1[2]][1]
+        end
+
+        if name2[1]
+            name_translation[(name2, collect(inds2))] = input_names[name2[2]][1]
         end
 
         @assert isempty(get_trace_inds(inds1)) "Trace not implemented yet"
@@ -475,8 +596,8 @@ function make_code(choices::Vector{NTuple{4,Vector{Int}}},
         sorted_inds1 = @view inds1[perm1]
         sorted_inds2 = @view inds2[perm2]
 
-        (exinds1, continds1), _ = partition_inds(sorted_inds1, continds)
-        (exinds2, continds2), _ = partition_inds(sorted_inds2, continds)
+        (exinds1, continds1), trans1 = partition_inds(sorted_inds1, continds)
+        (exinds2, continds2), trans2 = partition_inds(sorted_inds2, continds)
 
         outorder = if mulorder[1] == 1
             [exinds1; exinds2]
@@ -484,45 +605,137 @@ function make_code(choices::Vector{NTuple{4,Vector{Int}}},
             [exinds2; exinds1]
         end
 
+        inds1 = collect(inds1)
+        inds2 = collect(inds2)
+
+        sorted_inds1 = collect(sorted_inds1)
+        sorted_inds2 = collect(sorted_inds2)
+
         sorting1 = false
-        sorting2 = false
+        dims1 = get_dims(dimdict, inds1)
+        sorted_dims1 = get_dims(dimdict, sorted_inds1)
 
         if !issorted(perm1)
             sorting1 = true
-            println("Allocating   $((name1, collect(sorted_inds1)))")
-            println("Sorting      $((name1, collect(inds1))) -> $((name1, collect(sorted_inds1)))")
+            println("Allocating   $((name1, sorted_inds1))")
+            intermediate_name = get_intermediate_name!(func, sorted_dims1)
+            name_translation[(name1, sorted_inds1)] = intermediate_name
+            println(func.code_body,
+                "      call mem%alloc($intermediate_name, $(get_dimstr(sorted_dims1)))")
+
+            println("Sorting      $((name1, inds1)) -> $((name1, sorted_inds1))")
+            old_name = name_translation[(name1, inds1)]
+            println(func.code_body,
+                "      call sort_to_$(prod(string, perm1))($old_name, \
+                $intermediate_name, $(get_dimstr(dims1)))")
+
             if !name1[1]
                 println("Deallocating $((name1, inds1))")
+                println(func.code_body,
+                    "      call mem%dealloc($old_name)")
             end
         end
+
+        sorting2 = false
+        dims2 = get_dims(dimdict, inds2)
+        sorted_dims2 = get_dims(dimdict, sorted_inds2)
 
         if !issorted(perm2)
             sorting2 = true
-            println("Allocating   $((name2, collect(sorted_inds2)))")
-            println("Sorting      $((name2, collect(inds2))) -> $((name2, collect(sorted_inds2)))")
+            println("Allocating   $((name2, sorted_inds2))")
+            intermediate_name = get_intermediate_name!(func, sorted_dims2)
+            name_translation[(name2, sorted_inds2)] = intermediate_name
+            println(func.code_body,
+                "      call mem%alloc($intermediate_name, $(get_dimstr(sorted_dims2)))")
+
+            println("Sorting      $((name2, inds2)) -> $((name2, sorted_inds2))")
+            old_name = name_translation[(name2, inds2)]
+            println(func.code_body,
+                "      call sort_to_$(prod(string, perm2))($old_name, \
+                $intermediate_name, $(get_dimstr(dims2)))")
+
             if !name2[1]
                 println("Deallocating $((name2, inds2))")
+                println(func.code_body,
+                    "      call mem%dealloc($old_name)")
             end
         end
 
+        outdims = get_dims(dimdict, outorder)
+
+        allocating_output = false
+
         if nameout[2] != 0 || outorder != (@view indsout[output_perm])
+            allocating_output = true
             println("Allocating   $((nameout, outorder))")
+            intermediate_name = get_intermediate_name!(func, outdims)
+            name_translation[(nameout, outorder)] = intermediate_name
+            println(func.code_body,
+                "      call mem%alloc($intermediate_name, $(get_dimstr(outdims)))")
         end
 
-        if mulorder[1] == 1
-            print("Contracting  $((name1, collect(sorted_inds1))) * $((name2, collect(sorted_inds2)))")
-        else
-            print("Contracting  $((name2, collect(sorted_inds2))) * $((name1, collect(sorted_inds1)))")
-        end
+        left_tens, left_T, left_exinds, right_tens, right_T, right_exinds =
+            if mulorder[1] == 1
+                (name1, sorted_inds1), !trans1, exinds1,
+                (name2, sorted_inds2), trans2, exinds2
+            else
+                (name2, sorted_inds2), !trans2, exinds2,
+                (name1, sorted_inds1), trans1, exinds1
+            end
 
-        println(" -> $((nameout, outorder))")
+        left_exdims = get_dims(dimdict, left_exinds)
+        right_exdims = get_dims(dimdict, right_exinds)
+        contdims = get_dims(dimdict, continds1)
+
+        m = get_compact_dimstr(left_exdims)
+        n = get_compact_dimstr(right_exdims)
+        k = get_compact_dimstr(contdims)
+
+        lda = left_T ? k : m
+        ldb = right_T ? n : k
+        ldc = m
+
+        left_name = name_translation[left_tens]
+        right_name = name_translation[right_tens]
+        out_name = get(name_translation, (nameout, outorder), output_name)
+
+        α = "one"
+        β = allocating_output ? "zero" : "one"
+
+        println("Contracting  $left_tens * $right_tens \
+        -> $((nameout, outorder))")
+
+        println(
+            func.code_body,
+            """
+!
+      call dgemm('$(left_T ? 'T' : 'N')', '$(right_T ? 'T' : 'N')', &
+         $m, &
+         $n, &
+         $k, &
+         $α, &
+         $left_name, &
+         $lda, &
+         $right_name, &
+         $ldb, &
+         $β, &
+         $out_name, &
+         $ldc)
+!"""
+        )
 
         if !name1[1] || sorting1
-            println("Deallocating $((name1, collect(sorted_inds1)))")
+            println("Deallocating $((name1, sorted_inds1))")
+            old_name = name_translation[(name1, sorted_inds1)]
+            println(func.code_body,
+                "      call mem%dealloc($old_name)")
         end
 
         if !name2[1] || sorting2
-            println("Deallocating $((name2, collect(sorted_inds2)))")
+            println("Deallocating $((name2, sorted_inds2))")
+            old_name = name_translation[(name2, sorted_inds2)]
+            println(func.code_body,
+                "      call mem%dealloc($old_name)")
         end
 
         println()
@@ -532,13 +745,22 @@ function make_code(choices::Vector{NTuple{4,Vector{Int}}},
 
     outname = last(steps)[1][1]
     outinds = last(steps)[1][2]
-    outinds = @view outinds[output_perm]
+    outinds = outinds[output_perm]
     actual_outinds = intermediates_order[0]
+    outdims = get_dims(dimdict, actual_outinds)
 
     outperm = get_permutation(actual_outinds, outinds)
 
     if !issorted(outperm)
-        println("Sorting      $((outname, actual_outinds)) -> $((outname, collect(outinds)))")
+        println("Sorting      $((outname, actual_outinds)) -> $((outname, outinds))")
+        old_name = name_translation[(outname, actual_outinds)]
+        println(func.code_body,
+            "      call add_$(prod(string, invperm(outperm)))_to_\
+            $(prod(string, 1:length(outperm)))(one, $old_name, \
+            $output_name, $(get_dimstr(outdims)))")
+
         println("Deallocating $((outname, actual_outinds))")
+        println(func.code_body,
+            "      call mem%dealloc($old_name)")
     end
 end
