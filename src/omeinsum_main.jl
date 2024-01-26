@@ -2,7 +2,8 @@ using OMEinsum
 
 include("omeinsum_impl.jl")
 
-function test_code(code, inputperms=make_trivial_inputperms(code))
+function test_code(code, inputperms=make_trivial_inputperms(code),
+    outperms=make_trivial_outperm(code))
     cost = make_ov_cost(code)
 
     # optcode = optimize_code(code, cost,
@@ -14,9 +15,13 @@ function test_code(code, inputperms=make_trivial_inputperms(code))
 
     steps = walk_einsums(optcode)
 
-    choices, perms, _ = optimize_choices(cost, steps, inputperms)
+    choices, perms, outperm, sortcost = optimize_choices(cost, steps, inputperms, outperms)
 
-    make_code(choices, perms, steps)
+    @show sortcost
+
+    println()
+
+    make_code(choices, perms, outperm, steps)
     println()
 end
 
@@ -65,12 +70,14 @@ function test11()
 end
 
 function test12()
-    # rho_vovo[a,i,b,j] += 2*cs_vovo[a,i,c,j]*d_vv[b,c]
     code = ein"aicj,bc->aibj"
 
     inputperms = make_trivial_inputperms(code)
 
     push!(inputperms[1], [3, 4, 1, 2])
 
-    test_code(code, inputperms)
+    outperms = make_trivial_outperm(code)
+    push!(outperms, [3, 4, 1, 2])
+
+    test_code(code, inputperms, outperms)
 end
