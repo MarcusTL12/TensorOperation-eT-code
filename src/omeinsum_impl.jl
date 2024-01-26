@@ -354,6 +354,8 @@ function optimize_choices(costdict::Dict{T,C}, steps::Vector{Step{T}},
     best_outperm = nothing
     best_score = nothing
 
+    i = 0
+
     for outpermchoice in outputperms
         for permchoices in Iterators.product(inputperms...)
             permchoices_vec = collect(permchoices)
@@ -368,10 +370,20 @@ function optimize_choices(costdict::Dict{T,C}, steps::Vector{Step{T}},
                     best_choice = choices_vec
                     best_perms = permchoices_vec
                     best_outperm = outpermchoice
+                    @show best_score
+                end
+
+                i += 1
+
+                if score == 0
+                    println("Total number of checked permutations: $i")
+                    return best_choice, best_perms, best_outperm, best_score
                 end
             end
         end
     end
+
+    println("Total number of checked permutations: $i")
 
     best_choice, best_perms, best_outperm, best_score
 end

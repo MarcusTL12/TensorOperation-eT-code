@@ -17,7 +17,7 @@ function test_code(code, inputperms=make_trivial_inputperms(code),
 
     choices, perms, outperm, sortcost = optimize_choices(cost, steps, inputperms, outperms)
 
-    @show sortcost
+    @show sortcost perms outperm
 
     println()
 
@@ -30,7 +30,17 @@ function test1()
 end
 
 function test2()
-    test_code(ein"ak,kcld,dj,blci->aibj")
+    code = ein"ak,kcld,dj,blci->aibj"
+
+    inputperms = make_trivial_inputperms(code)
+
+    push!(inputperms[2], [3, 4, 1, 2])
+    push!(inputperms[4], [3, 4, 1, 2])
+
+    outperms = make_trivial_outperm(code)
+    push!(outperms, [3, 4, 1, 2])
+
+    test_code(code, inputperms, outperms)
 end
 
 function test3()
