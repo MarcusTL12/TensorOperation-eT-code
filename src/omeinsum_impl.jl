@@ -667,11 +667,14 @@ function make_code!(func::FortranFunction,
 
         if nameout[2] != 0 || outorder != (@view indsout[output_perm])
             allocating_output = true
-            println("Allocating   $((nameout, outorder))")
             intermediate_name = get_intermediate_name!(func, outdims)
             name_translation[(nameout, outorder)] = intermediate_name
-            println(func.code_body,
-                "      call mem%alloc($intermediate_name, $(get_dimstr(outdims)))")
+
+            if !isempty(outorder)
+                println("Allocating   $((nameout, outorder))")
+                println(func.code_body,
+                    "      call mem%alloc($intermediate_name, $(get_dimstr(outdims)))")
+            end
         end
 
         left_tens, left_T, left_exinds, right_tens, right_T, right_exinds =
@@ -724,14 +727,14 @@ function make_code!(func::FortranFunction,
 !"""
         )
 
-        if !name1[1] || sorting1
+        if !isempty(sorted_inds1) && (!name1[1] || sorting1)
             println("Deallocating $((name1, sorted_inds1))")
             old_name = name_translation[(name1, sorted_inds1)]
             println(func.code_body,
                 "      call mem%dealloc($old_name)")
         end
 
-        if !name2[1] || sorting2
+        if !isempty(sorted_inds2) && (!name2[1] || sorting2)
             println("Deallocating $((name2, sorted_inds2))")
             old_name = name_translation[(name2, sorted_inds2)]
             println(func.code_body,
