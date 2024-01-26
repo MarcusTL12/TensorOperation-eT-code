@@ -191,7 +191,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_v*wf%n_o**2, &
+                 wf%n_o**3, &
                  wf%n_o, &
                  one, &
                  cs_vo, &
@@ -295,9 +295,9 @@
       call mem%alloc(rho_vovo_1243, wf%n_v, wf%n_o, wf%n_o, wf%n_v)
 !
       call dgemm('T', 'T', &
-                 wf%n_v*wf%n_o**2, &
+                 wf%n_o**3, &
                  wf%n_v, &
-                 wf%n_o, &
+                 wf%n_v, &
                  -two, &
                  X17_ooov, &
                  wf%n_o, &
@@ -305,7 +305,7 @@
                  wf%n_v, &
                  zero, &
                  rho_vovo_1243, &
-                 wf%n_v*wf%n_o**2)
+                 wf%n_o**3)
 !
       call mem%dealloc(X17_ooov)
       call add_1243_to_1234(one, rho_vovo_1243, rho_vovo, wf%n_v, wf%n_o, wf%n_v, wf%n_o)
@@ -335,7 +335,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_v*wf%n_o**2, &
+                 wf%n_o**3, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -406,7 +406,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  -one, &
                  ct_vo, &
@@ -488,7 +488,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -602,7 +602,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  wf%s1, &
@@ -860,7 +860,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  -two, &
                  wf%s1, &
@@ -980,7 +980,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  cs_vo, &
@@ -1025,7 +1025,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  cs_vo, &
@@ -1059,9 +1059,9 @@
       call sort_to_1342(X73_vovo, X74_vvoo, wf%n_v, wf%n_o, wf%n_v, wf%n_o)
 !
       call dgemm('N', 'T', &
-                 wf%n_v**2, &
                  wf%n_v*wf%n_o, &
-                 wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
+                 wf%n_v*wf%n_o, &
                  one, &
                  X74_vvoo, &
                  wf%n_v**2, &
@@ -1069,7 +1069,7 @@
                  wf%n_v*wf%n_o, &
                  one, &
                  rho_vovo, &
-                 wf%n_v**2)
+                 wf%n_v*wf%n_o)
 !
       call mem%dealloc(X74_vvoo)
       call mem%dealloc(X73_vovo)
@@ -1096,7 +1096,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o, &
-                 wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
                  one, &
                  X76_voov, &
@@ -1178,7 +1178,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  -one, &
                  cs_vo, &
@@ -1298,7 +1298,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -1343,7 +1343,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -1495,7 +1495,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o, &
-                 wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
                  -two, &
                  X108_voov, &
@@ -1572,9 +1572,9 @@
       call sort_to_1342(X114_vovo, X115_vvoo, wf%n_v, wf%n_o, wf%n_v, wf%n_o)
 !
       call dgemm('N', 'T', &
-                 wf%n_v**2, &
                  wf%n_v*wf%n_o, &
-                 wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
+                 wf%n_v*wf%n_o, &
                  one, &
                  X115_vvoo, &
                  wf%n_v**2, &
@@ -1582,7 +1582,7 @@
                  wf%n_v*wf%n_o, &
                  one, &
                  rho_vovo, &
-                 wf%n_v**2)
+                 wf%n_v*wf%n_o)
 !
       call mem%dealloc(X115_vvoo)
       call mem%dealloc(X114_vovo)
@@ -1609,7 +1609,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o, &
-                 wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
                  one, &
                  X117_voov, &
@@ -1733,7 +1733,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  -one, &
                  ct_vo, &
@@ -2429,7 +2429,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o**2, &
-                 wf%n_o, &
+                 wf%n_v, &
                  wf%n_v, &
                  one, &
                  X189_voov, &
@@ -2448,7 +2448,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_v*wf%n_o**2, &
+                 wf%n_o**3, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -2482,7 +2482,7 @@
 !
       call dgemm('T', 'T', &
                  wf%n_o, &
-                 wf%n_o, &
+                 wf%n_v, &
                  wf%n_v, &
                  one, &
                  ct_vo, &
@@ -2536,7 +2536,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o**2, &
-                 wf%n_o, &
+                 wf%n_v, &
                  wf%n_v, &
                  one, &
                  X198_voov, &
@@ -2555,7 +2555,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_v*wf%n_o**2, &
+                 wf%n_o**3, &
                  wf%n_o, &
                  one, &
                  wf%s1, &
@@ -2589,7 +2589,7 @@
 !
       call dgemm('T', 'T', &
                  wf%n_o, &
-                 wf%n_o, &
+                 wf%n_v, &
                  wf%n_v, &
                  one, &
                  wf%s1, &
@@ -2671,7 +2671,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -2705,7 +2705,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o, &
-                 wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
                  wf%n_v*wf%n_o, &
                  one, &
                  t_vovo, &
@@ -2723,7 +2723,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_v*wf%n_o**2, &
+                 wf%n_o**3, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -2764,7 +2764,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o, &
-                 wf%n_v*wf%n_o, &
+                 wf%n_o**2, &
                  wf%n_v*wf%n_o, &
                  one, &
                  X215_voov, &
@@ -2784,7 +2784,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_v**2*wf%n_o, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  ct_vo, &
@@ -2823,9 +2823,9 @@
       call mem%alloc(X220_ovoo_3412, wf%n_o, wf%n_o, wf%n_o, wf%n_v)
 !
       call dgemm('T', 'T', &
-                 wf%n_v*wf%n_o, &
-                 wf%n_v*wf%n_o, &
                  wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
+                 wf%n_v*wf%n_o, &
                  one, &
                  X221_ooov, &
                  wf%n_o**2, &
@@ -2833,7 +2833,7 @@
                  wf%n_v*wf%n_o, &
                  zero, &
                  X220_ovoo_3412, &
-                 wf%n_v*wf%n_o)
+                 wf%n_o**2)
 !
       call mem%dealloc(X221_ooov)
       call sort_to_3412(X220_ovoo_3412, X220_ovoo, wf%n_o, wf%n_o, wf%n_o, wf%n_v)
@@ -2845,7 +2845,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_o**3, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  one, &
                  wf%s1, &
@@ -2948,7 +2948,7 @@
 !
       call dgemm('T', 'N', &
                  wf%n_o, &
-                 wf%n_v*wf%n_o**2, &
+                 wf%n_o**3, &
                  wf%n_v, &
                  one, &
                  ct_vo, &
@@ -2967,7 +2967,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v**2, &
-                 wf%n_v*wf%n_o, &
+                 wf%n_o**2, &
                  wf%n_o**2, &
                  one, &
                  X232_vvoo, &
@@ -3009,7 +3009,7 @@
 !
       call dgemm('N', 'T', &
                  wf%n_v*wf%n_o, &
-                 wf%n_v*wf%n_o, &
+                 wf%n_o**2, &
                  wf%n_v*wf%n_o, &
                  one, &
                  wf%u_aibj, &
@@ -3028,7 +3028,7 @@
 !
       call dgemm('N', 'N', &
                  wf%n_v, &
-                 wf%n_v**2*wf%n_o, &
+                 wf%n_v*wf%n_o**2, &
                  wf%n_o, &
                  -one, &
                  ct_vo, &
@@ -3067,9 +3067,9 @@
       call mem%alloc(X240_vvoo_3412, wf%n_o, wf%n_o, wf%n_v, wf%n_v)
 !
       call dgemm('N', 'T', &
-                 wf%n_v*wf%n_o, &
-                 wf%n_v*wf%n_o, &
                  wf%n_o**2, &
+                 wf%n_v*wf%n_o, &
+                 wf%n_v*wf%n_o, &
                  one, &
                  X241_vooo, &
                  wf%n_v*wf%n_o, &
@@ -3077,7 +3077,7 @@
                  wf%n_v*wf%n_o, &
                  zero, &
                  X240_vvoo_3412, &
-                 wf%n_v*wf%n_o)
+                 wf%n_o**2)
 !
       call mem%dealloc(X241_vooo)
       call sort_to_3412(X240_vvoo_3412, X240_vvoo, wf%n_o, wf%n_o, wf%n_v, wf%n_v)

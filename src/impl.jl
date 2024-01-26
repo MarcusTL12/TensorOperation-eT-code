@@ -710,6 +710,10 @@ function eT_contract(C, pC,
     pB = compose_iperms(pB, lpB)
     pC = compose_iperms(pC, lpC)
 
+    outdim1 = get_dimstr(TupleTools.getindices(sA, pA[1]))
+    outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
+    contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
+
     @show pA pB pC
 
     if length(linearize(pA)) > length(linearize(pB)) && !issorted(pA[2])
@@ -741,10 +745,6 @@ function eT_contract(C, pC,
     else
         B_sort
     end
-
-    outdim1 = get_dimstr(TupleTools.getindices(sA, pA[1]))
-    outdim2 = get_dimstr(TupleTools.getindices(sB, pB[2]))
-    contdim = get_dimstr(TupleTools.getindices(sA, pA[2]))
 
     lda = get_dimstr(TupleTools.getindices(sA, pA[A_T ? 2 : 1]))
     ldb = get_dimstr(TupleTools.getindices(sB, pB[B_T ? 2 : 1]))

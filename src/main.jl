@@ -326,3 +326,17 @@ function test24()
         rho_vovo[a,i,b,j] += 2*cs_vovo[a,i,c,j]*d_vv[b,c]
     end
 end
+
+function test25()
+    reset_state()
+
+    rho_vovo = output_tensor("rho_vovo", ("v", "o", "v", "o"))
+    ct_vo = input_tensor("ct_vo", ("v", "o"))
+    s_vo = input_tensor("s_vo", ("v", "o"))
+    g_ovov = input_tensor("g_ovov", ("o", "v", "o", "v"))
+    t_vovo = input_tensor("t_vovo", ("v", "o", "v", "o"))
+
+    @tensor opt=(a=>10χ,b=>10χ,c=>10χ,d=>10χ,i=>χ,j=>χ,k=>χ,l=>χ) backend=eTbackend begin
+        rho_vovo[a,i,b,j] += ct_vo[a,k]*g_ovov[k,c,l,d]*s_vo[d,j]*t_vovo[b,l,c,i]
+    end
+end
