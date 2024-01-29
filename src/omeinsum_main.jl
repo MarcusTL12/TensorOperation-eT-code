@@ -130,3 +130,11 @@ end
 function test17()
     test_code(ein",bj,bj->")
 end
+
+function test18()
+    test_code(ein",iijj->")
+end
+
+function test18()
+    test_code(ein",ijji->")
+end

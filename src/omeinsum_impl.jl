@@ -213,7 +213,7 @@ function make_scaled_steps(steps::Vector{Step{T}}) where {T}
     ScaledStep{T}[out => newstepsdict[out] for (out, _) in steps if haskey(newstepsdict, out)]
 end
 
-function get_trace_inds(inds)
+function partition_trace_inds(inds)
     T = eltype(inds)
     seen = T[]
     trace_inds = T[]
@@ -226,7 +226,9 @@ function get_trace_inds(inds)
         end
     end
 
-    trace_inds
+    nontrace_inds = [ind for ind in inds if ind ∉ trace_inds]
+
+    nontrace_inds, trace_inds
 end
 
 function get_permutation(from, to)
@@ -247,70 +249,17 @@ function partition_inds(inds, continds)
     end
 end
 
-function parse_contraction((out, (in1, in2))::Step)
-    @assert isempty(get_trace_inds(in1[2])) "Trace not implemented yet"
-    @assert isempty(get_trace_inds(in2[2])) "Trace not implemented yet"
-
-    continds = intersect(in1[2], in2[2])
-
-    perm1 = get_partition_perm(in1[2], continds)
-    perm2 = get_partition_perm(in2[2], continds)
-
-    @show perm1 perm2
-
-    sorted_inds1 = view(copy(in1[2]), perm1)
-    sorted_inds2 = view(copy(in2[2]), perm2)
-
-    @show String(sorted_inds1) String(sorted_inds2)
-
-    (exinds1, continds1), trans1 = partition_inds(sorted_inds1, continds)
-    (exinds2, continds2), trans2 = partition_inds(sorted_inds2, continds)
-
-    @show String(exinds1) String(exinds2) String(continds1) String(continds2) trans1 trans2
-
-    # Just permute left continds
-    if continds1 != continds2
-        contperm = get_permutation(continds1, continds2)
-        largeperm = collect(1:length(perm1))
-        if trans1
-            contperm .+= length(exinds1)
-            largeperm[length(exinds1)+1:end] .= contperm
-        else
-            largeperm[1:length(continds)] .= contperm
-        end
-
-        permute!(perm1, largeperm)
-    end
-
-    println()
-
-    sorted_inds1 = view(copy(in1[2]), perm1)
-    sorted_inds2 = view(copy(in2[2]), perm2)
-
-    @show String(sorted_inds1) String(sorted_inds2)
-
-    (exinds1, continds1), trans1 = partition_inds(sorted_inds1, continds)
-    (exinds2, continds2), trans2 = partition_inds(sorted_inds2, continds)
-    @show String(exinds1) String(exinds2) String(continds1) String(continds2) trans1 trans2
-
-    println()
-
-    @show perm1 perm2
-
-    nothing
-end
-
 function get_num_choices((out, (in1, in2))::Step)
-    @assert isempty(get_trace_inds(in1[2])) "Trace not implemented yet"
-    @assert isempty(get_trace_inds(in2[2])) "Trace not implemented yet"
+    inds1, _ = partition_trace_inds(in1[2])
+    inds2, _ = partition_trace_inds(in2[2])
 
-    continds = intersect(in1[2], in2[2])
+    continds = intersect(inds1, inds2)
 
-    perm1 = get_partition_perm(in1[2], continds)
-    perm2 = get_partition_perm(in2[2], continds)
+    perm1 = get_partition_perm(inds1, continds)
+    perm2 = get_partition_perm(inds2, continds)
 
-    sorted_inds1 = view(copy(in1[2]), perm1)
-    sorted_inds2 = view(copy(in2[2]), perm2)
+    sorted_inds1 = view(copy(inds1), perm1)
+    sorted_inds2 = view(copy(inds2), perm2)
 
     (exinds1, continds1), _ = partition_inds(sorted_inds1, continds)
     (exinds2, continds2), _ = partition_inds(sorted_inds2, continds)
@@ -379,8 +328,8 @@ function compute_sorting_complexity(costdict::Dict{T,C},
             intermediates_order[name2[2]]
         end
 
-        @assert isempty(get_trace_inds(inds1)) "Trace not implemented yet"
-        @assert isempty(get_trace_inds(inds2)) "Trace not implemented yet"
+        inds1, _ = partition_trace_inds(inds1)
+        inds2, _ = partition_trace_inds(inds2)
 
         continds = intersect(inds1, inds2)
 
@@ -610,24 +559,24 @@ function make_code!(func::FortranFunction,
 
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
         ((nameout, indsout), (scalars, (name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
-        inds1 = if name1[1]
+        full_inds1 = if name1[1]
             @view _inds1[input_perms[name1[2]]]
         else
             intermediates_order[name1[2]]
         end
 
-        inds2 = if name2[1]
+        full_inds2 = if name2[1]
             @view _inds2[input_perms[name2[2]]]
         else
             intermediates_order[name2[2]]
         end
 
         if name1[1]
-            name_translation[(name1, collect(inds1))] = input_names[name1[2]][1]
+            name_translation[(name1, collect(full_inds1))] = input_names[name1[2]][1]
         end
 
         if name2[1]
-            name_translation[(name2, collect(inds2))] = input_names[name2[2]][1]
+            name_translation[(name2, collect(full_inds2))] = input_names[name2[2]][1]
         end
 
         for (s_name, s_inds) in scalars
@@ -636,8 +585,44 @@ function make_code!(func::FortranFunction,
             end
         end
 
-        @assert isempty(get_trace_inds(inds1)) "Trace not implemented yet"
-        @assert isempty(get_trace_inds(inds2)) "Trace not implemented yet"
+        inds1, trace_inds1 = partition_trace_inds(full_inds1)
+        inds2, trace_inds2 = partition_trace_inds(full_inds2)
+
+        tracing1 = false
+        if !isempty(trace_inds1)
+            tracing1 = true
+            dims1 = get_dims(dimdict, inds1)
+
+            intermediate_name = get_intermediate_name!(func, dims1)
+            name_translation[(name1, inds1)] = intermediate_name
+            if !isempty(inds1)
+                println("Allocating   $((name1, inds1))")
+                println(func.code_body,
+                    "      call mem%alloc($intermediate_name, $(get_dimstr(dims1)))")
+            end
+
+            println("Tracing      $((name1, collect(full_inds1))) -> $((name1, inds1))")
+            old_name = name_translation[(name1, full_inds1)]
+            make_trace_code!(func, dimdict, old_name, full_inds1, intermediate_name, inds1, trace_inds1)
+        end
+
+        tracing2 = false
+        if !isempty(trace_inds2)
+            tracing2 = true
+            dims2 = get_dims(dimdict, inds2)
+
+            intermediate_name = get_intermediate_name!(func, dims2)
+            name_translation[(name2, inds2)] = intermediate_name
+            if !isempty(inds2)
+                println("Allocating   $((name2, inds2))")
+                println(func.code_body,
+                    "      call mem%alloc($intermediate_name, $(get_dimstr(dims2)))")
+            end
+
+            println("Tracing      $((name1, collect(full_inds2))) -> $((name1, inds2))")
+            old_name = name_translation[(name2, full_inds2)]
+            make_trace_code!(func, dimdict, old_name, full_inds2, intermediate_name, inds2, trace_inds2)
+        end
 
         continds = intersect(inds1, inds2)
 
@@ -760,6 +745,9 @@ function make_code!(func::FortranFunction,
             end
         end
 
+        @assert !(sorting1 && tracing1) "Simultaneous sorting and tracing"
+        @assert !(sorting2 && tracing2) "Simultaneous sorting and tracing"
+
         # Doing contraction
 
         left_tens, left_T, left_exinds, right_tens, right_T, right_exinds =
@@ -820,19 +808,19 @@ function make_code!(func::FortranFunction,
             println("Contracting  $left_tens * $right_tens \
             -> $((nameout, outorder))")
 
-            simplify_dgemm(func.code_body, left_T, right_T, left_exdims,
+            func.use_ddot[] |= simplify_dgemm(func.code_body, left_T, right_T, left_exdims,
                 right_exdims, contdims, α, left_name, right_name, β, out_name)
 
             # Contraction done
 
-            if !isempty(sorted_inds1) && (!name1[1] || sorting1)
+            if !isempty(sorted_inds1) && (!name1[1] || sorting1 || tracing1)
                 println("Deallocating $((name1, sorted_inds1))")
                 old_name = name_translation[(name1, sorted_inds1)]
                 println(func.code_body,
                     "      call mem%dealloc($old_name)")
             end
 
-            if !isempty(sorted_inds2) && (!name2[1] || sorting2)
+            if !isempty(sorted_inds2) && (!name2[1] || sorting2 || tracing2)
                 println("Deallocating $((name2, sorted_inds2))")
                 old_name = name_translation[(name2, sorted_inds2)]
                 println(func.code_body,
@@ -1088,4 +1076,112 @@ function make_eT_num_words(x)
     else
         "$(x)d0"
     end
+end
+
+function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
+    to_name, to_inds, trace_inds)
+    n_loop_indices = length(to_inds) + length(trace_inds)
+
+    func.n_integers[] = max(func.n_integers[], n_loop_indices)
+
+    used_inds = 0
+    input_inds = zeros(Int, length(from_inds))
+    output_inds = zeros(Int, length(to_inds))
+
+    index_dims = String[]
+
+    seen_inds = eltype(from_inds)[]
+
+    for i in from_inds
+        if i ∉ seen_inds
+            push!(seen_inds, i)
+            used_inds += 1
+            push!(index_dims, eT_dim_dict[dimdict[i]])
+            for j in eachindex(input_inds)
+                if from_inds[j] == i
+                    input_inds[j] = used_inds
+                end
+            end
+
+            for j in eachindex(output_inds)
+                if to_inds[j] == i
+                    output_inds[j] = used_inds
+                end
+            end
+        end
+    end
+
+    outdims = get_dims(dimdict, to_inds)
+
+    if isempty(to_inds)
+        println(func.code_body, "      $to_name = zero")
+    else
+        println(func.code_body,
+            "      call zero_array($to_name, $(get_compact_dimstr(outdims)))")
+    end
+
+    tab_level = 2
+
+    println(func.code_body, "!")
+    print(func.code_body, "!\$omp parallel do schedule(static)")
+    if n_loop_indices > 1
+        print(func.code_body, " collapse($n_loop_indices)")
+    end
+    print(func.code_body, " private(")
+
+    isfirst = true
+    for i in 1:n_loop_indices
+        if isfirst
+            isfirst = false
+        else
+            print(func.code_body, ",")
+        end
+        print(func.code_body, "i$i")
+    end
+    println(func.code_body, ")")
+
+    for i in reverse(1:n_loop_indices)
+        println(func.code_body, "   "^tab_level, "do i$i = 1, ", index_dims[i])
+        tab_level += 1
+    end
+
+    out_string = IOBuffer()
+
+    print(out_string, "$to_name")
+    if !isempty(to_inds)
+        print(out_string, "(")
+        isfirst = true
+        for i in output_inds
+            if isfirst
+                isfirst = false
+            else
+                print(out_string, ",")
+            end
+            print(out_string, "i$i")
+        end
+        print(out_string, ")")
+    end
+
+    out_string = String(take!(out_string))
+
+    print(func.code_body, "   "^tab_level, "$out_string = $out_string + $from_name(")
+
+    isfirst = true
+    for i in input_inds
+        if isfirst
+            isfirst = false
+        else
+            print(func.code_body, ",")
+        end
+        print(func.code_body, "i$i")
+    end
+    println(func.code_body, ")")
+
+    for _ in 1:n_loop_indices
+        tab_level -= 1
+        println(func.code_body, "   "^tab_level, "end do")
+    end
+
+    println(func.code_body, "!\$omp end parallel do")
+    println(func.code_body, "!")
 end
