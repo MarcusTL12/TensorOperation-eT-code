@@ -106,7 +106,6 @@ function walk_einsums(code::DynamicNestedEinsum{T}) where {T}
     steps = Step{T}[]
     walk_einsums!(steps, code)
     sort_scalars_first!(steps)
-    # bypass_scalars!(steps)
     steps
 end
 
@@ -529,7 +528,7 @@ struct FortranFunction
     code_body::IOBuffer
     output_param::Tuple{String,Vector{String}}
     input_parameters::Vector{Tuple{String,Vector{String}}}
-    local_variables::Vector{Tuple{String,Vector{String}}}
+    local_variables::Vector{Tuple{String,Int}}
     n_integers::Ref{Int}
     use_ddot::Ref{Bool}
 end
@@ -537,7 +536,7 @@ end
 function get_intermediate_name!(func::FortranFunction, dims)
     i = length(func.local_variables) + 1
     name = "X$i"
-    push!(func.local_variables, (name, dims))
+    push!(func.local_variables, (name, length(dims)))
     name
 end
 
@@ -558,14 +557,29 @@ function make_code!(func::FortranFunction,
     has_output = false
 
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
-        ((nameout, indsout), (scalars, (name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
+        ((nameout, indsout), (scalars, (name1, _inds1), (name2, _inds2)))) in
+        zip(choices, steps)
         full_inds1 = if name1[1]
+            name, is_inp = input_names[name1[2]]
+            if is_inp
+                dims = get_dims(dimdict, _inds1)
+                if (name, dims) ∉ func.input_parameters
+                    push!(func.input_parameters, (name, dims))
+                end
+            end
             @view _inds1[input_perms[name1[2]]]
         else
             intermediates_order[name1[2]]
         end
 
         full_inds2 = if name2[1]
+            name, is_inp = input_names[name2[2]]
+            if is_inp
+                dims = get_dims(dimdict, _inds2)
+                if (name, dims) ∉ func.input_parameters
+                    push!(func.input_parameters, (name, dims))
+                end
+            end
             @view _inds2[input_perms[name2[2]]]
         else
             intermediates_order[name2[2]]
@@ -1184,4 +1198,122 @@ function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
 
     println(func.code_body, "!\$omp end parallel do")
     println(func.code_body, "!")
+end
+
+function finalize_eT_function(func::FortranFunction, routine_name, wf_type)
+    io = IOBuffer()
+
+    routine_name = "$(routine_name)_$(wf_type)"
+
+    sort!(func.input_parameters)
+
+    print(io, "   subroutine $routine_name(wf")
+
+    print(io, ", ", func.output_param[1])
+
+    for param in func.input_parameters
+        print(io, ", ", param[1])
+    end
+
+    println(io, ")")
+
+    println(
+        io,
+        """
+!!
+!! Generated function
+!!
+      implicit none
+!"""
+    )
+
+    println(io, "      class($wf_type), intent(in) :: wf\n!")
+
+    print(io, "      real(dp), ")
+
+    if !isempty(func.output_param[2])
+        print(io, "dimension(")
+        isfirst = true
+        for d in func.output_param[2]
+            if isfirst
+                isfirst = false
+            else
+                print(io, ",")
+            end
+
+            print(io, eT_dim_dict[d])
+        end
+        print(io, "), ")
+    end
+
+    println(io, "intent(in) :: ", func.output_param[1], "\n!")
+
+    structure_dict = Dict()
+
+    for (name, structure) in func.input_parameters
+        if !haskey(structure_dict, structure)
+            structure_dict[structure] = String[]
+        end
+        push!(structure_dict[structure], name)
+    end
+
+    structure_sort = [(length(s), s, names) for (s, names) in structure_dict]
+    sort!(structure_sort)
+
+    for (_, structure, names) in structure_sort
+        print(io, "      real(dp)")
+        if length(structure) > 0
+            print(io, ", dimension(")
+            isfirst = true
+            for d in structure
+                if isfirst
+                    isfirst = false
+                else
+                    print(io, ",")
+                end
+
+                print(io, eT_dim_dict[d])
+            end
+            print(io, ")")
+        end
+
+        print(io, ", intent(inout) :: ")
+
+        isfirst = true
+        for name in names
+            if isfirst
+                isfirst = false
+            else
+                print(io, ", ")
+            end
+            print(io, name)
+        end
+        println(io, "")
+    end
+
+    if func.n_integers[] > 0
+        print(io, "!\n      integer :: ")
+        isfirst = true
+        for i in 1:func.n_integers[]
+            if isfirst
+                isfirst = false
+            else
+                print(io, ", ")
+            end
+            print(io, "i$i")
+        end
+        println(io, "")
+    end
+
+    if func.use_ddot[]
+        println(io, "!\n      real(dp), external :: ddot")
+    end
+
+    println(io, "!")
+
+    print(io, String(take!(func.code_body)))
+
+    println(io, "!\n   end subroutine $routine_name")
+
+    String(take!(io))
 end
