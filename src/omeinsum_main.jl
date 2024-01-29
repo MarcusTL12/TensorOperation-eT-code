@@ -16,6 +16,9 @@ function test_code(code, names=make_tmp_inputnames(code),
     @show optcode
 
     steps = walk_einsums(optcode)
+    steps = make_scaled_steps(steps)
+
+    display(steps)
 
     choices, perms, outperm, sortcost = optimize_choices(cost, steps, inputperms, outperms)
 
@@ -28,7 +31,9 @@ function test_code(code, names=make_tmp_inputnames(code),
 
     dimdict = make_ov_dimdict(code)
 
-    make_code!(func, choices, names, perms, outname, outperm, dimdict, steps)
+    prefactor = 1
+
+    make_code!(func, choices, names, perms, outname, outperm, dimdict, prefactor, steps)
     println()
 
     println(String(take!(func.code_body)))
@@ -99,5 +104,25 @@ function test12()
     outperms = make_trivial_outperm(code)
     push!(outperms, [3, 4, 1, 2])
 
-    test_code(code, inputperms, outperms)
+    test_code(code, [("A", true), ("B", true)], "X", inputperms, outperms)
+end
+
+function test13()
+    test_code(ein"ak,ik,bj,jb,cl,cl->ai")
+end
+
+function test14()
+    test_code(ein"ak,ik,bj,jb,->ai")
+end
+
+function test15()
+    test_code(ein"ai,->ai")
+end
+
+function test16()
+    test_code(ein"ia,bj,bj->ai")
+end
+
+function test17()
+    test_code(ein",bj,bj->")
 end

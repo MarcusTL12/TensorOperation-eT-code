@@ -1,6 +1,7 @@
 using OMEinsum
 using StaticArrays
 using Permutations
+using SymPy
 
 function get_partition_perm(inds, continds)
     function isleftind(i)
@@ -28,7 +29,7 @@ function get_partition_perm(inds, continds)
     invperm(order)
 end
 
-function make_ov_cost(code::Union{StaticEinCode{Char},DynamicEinCode{Char}})
+function make_ov_cost(code::Union{StaticEinCode{Char},DynamicEinCode{Char},StaticNestedEinsum{Char}})
     cost = uniformsize(code, 10)
     for i in keys(cost)
         if i in "abcdefg"
@@ -40,7 +41,7 @@ end
 
 make_ov_cost(code::AbstractEinsum) = uniformsize(code, 10)
 
-function make_ov_dimdict(code::Union{StaticEinCode{Char},DynamicEinCode{Char}})
+function make_ov_dimdict(code::Union{StaticEinCode{Char},DynamicEinCode{Char},StaticNestedEinsum{Char}})
     dimdict = Dict{Char,String}()
     cost = uniformsize(code, 10)
     for i in keys(cost)
@@ -56,7 +57,7 @@ function make_ov_dimdict(code::Union{StaticEinCode{Char},DynamicEinCode{Char}})
     dimdict
 end
 
-function make_ov_dimdict(code::Union{StaticEinCode{T},DynamicEinCode{T}}) where {T}
+function make_ov_dimdict(code::Union{StaticEinCode{T},DynamicEinCode{T},StaticNestedEinsum{T}}) where {T}
     dimdict = Dict{T,String}()
     cost = uniformsize(code, 10)
     for i in keys(cost)
@@ -104,6 +105,8 @@ end
 function walk_einsums(code::DynamicNestedEinsum{T}) where {T}
     steps = Step{T}[]
     walk_einsums!(steps, code)
+    sort_scalars_first!(steps)
+    # bypass_scalars!(steps)
     steps
 end
 
@@ -125,6 +128,89 @@ function Base.show(io::IO, tens::Tens)
     if !isempty(inds)
         print(io, '_', OMEinsum._join(inds))
     end
+end
+
+function sort_scalars_first!(steps::Vector{Step{T}}) where {T}
+    for i in eachindex(steps)
+        out, (in1, in2) = steps[i]
+        if isempty(out[2])
+            last_j = i
+            for j in i-1:-1:1
+                (out_j, in) = steps[j]
+                if out_j != in1 && out_j != in2
+                    steps[j+1] = out_j => in
+                    last_j = j
+                else
+                    break
+                end
+            end
+            steps[last_j] = out => (in1, in2)
+        end
+    end
+end
+
+function bypass_scalars!(steps::Vector{Step{T}}) where {T}
+    done = false
+    while !done
+        done = true
+        for i in eachindex(steps)
+            out, (in1, in2) = steps[i]
+            otherin = if isempty(in1[2])
+                in2
+            elseif isempty(in2[2])
+                in1
+            end
+
+            if !isnothing(otherin)
+                j = findfirst(((x, _),) -> x == otherin, steps)
+
+                if !isnothing(j)
+                    _, in = steps[j]
+                    steps[j] = out => in
+                    deleteat!(steps, i)
+                    done = false
+                    break
+                end
+            end
+        end
+    end
+end
+
+function get_scalars(code::AbstractEinsum, inputnames)
+    scalar = 1
+
+    for ((name, _), inds) in zip(inputnames, getixsv(code))
+        if isempty(inds)
+            scalar *= Sym(name)
+        end
+    end
+
+    scalar
+end
+
+const ScaledStep{T} = Pair{Tens{T},Tuple{Vector{Tens{T}},Tens{T},Tens{T}}}
+
+function make_scaled_steps(steps::Vector{Step{T}}) where {T}
+    newstepsdict = Dict([out => (Tens{T}[], in1, in2) for (out, (in1, in2)) in steps])
+
+    for (out, (in1, in2)) in reverse(steps)
+        scalar, otherin = if isempty(in1[2]) && haskey(newstepsdict, in2)
+            in1, in2
+        elseif isempty(in2[2]) && haskey(newstepsdict, in1)
+            in2, in1
+        else
+            nothing, nothing
+        end
+
+        if !isnothing(otherin)
+            scalars, in... = newstepsdict[otherin]
+            push!(scalars, scalar)
+            delete!(newstepsdict, otherin)
+            newstepsdict[out] = (scalars, in...)
+        end
+    end
+
+    ScaledStep{T}[out => newstepsdict[out] for (out, _) in steps if haskey(newstepsdict, out)]
 end
 
 function get_trace_inds(inds)
@@ -244,6 +330,10 @@ function get_num_choices((out, (in1, in2))::Step)
     (mulorder, contperm, length(exinds1), length(exinds2))
 end
 
+function get_num_choices((out, (_, in1, in2))::ScaledStep)
+    get_num_choices(out => (in1, in2))
+end
+
 function get_num_choices(steps::Vector)
     get_num_choices.(steps)
 end
@@ -270,13 +360,13 @@ function compute_sorting_complexity(costdict::Dict{T,C},
     choices::Vector{NTuple{4,Vector{Int}}},
     input_perms::Vector{Vector{Int}},
     output_perm::Vector{Int},
-    steps::Vector{Step{T}}) where {T,C}
+    steps::Vector{ScaledStep{T}}) where {T,C}
     intermediates_order = Dict{Int,Vector{T}}()
 
     total_cost = 0
 
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
-        ((nameout, indsout), ((name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
+        ((nameout, indsout), (_, (name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
         inds1 = if name1[1]
             @view _inds1[input_perms[name1[2]]]
         else
@@ -382,7 +472,7 @@ function choices_iter(num_choices::Vector{NTuple{4,Int}})
     Iterators.product((choices_iter(nc) for nc in num_choices)...)
 end
 
-function optimize_choices(costdict::Dict{T,C}, steps::Vector{Step{T}},
+function optimize_choices(costdict::Dict{T,C}, steps::Vector{ScaledStep{T}},
     inputperms::Vector{Vector{Vector{Int}}},
     outputperms::Vector{Vector{Int}}) where {T,C}
     best_choice = nothing
@@ -509,14 +599,17 @@ function make_code!(func::FortranFunction,
     output_name::String,
     output_perm::Vector{Int},
     dimdict::Dict{T,String},
-    steps::Vector{Step{T}}) where {T}
+    scalar,
+    steps::Vector{ScaledStep{T}}) where {T}
 
     intermediates_order = Dict{Int,Vector{T}}()
 
     name_translation = Dict{Tens{T},String}()
 
+    has_output = false
+
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
-        ((nameout, indsout), ((name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
+        ((nameout, indsout), (scalars, (name1, _inds1), (name2, _inds2)))) in zip(choices, steps)
         inds1 = if name1[1]
             @view _inds1[input_perms[name1[2]]]
         else
@@ -535,6 +628,12 @@ function make_code!(func::FortranFunction,
 
         if name2[1]
             name_translation[(name2, collect(inds2))] = input_names[name2[2]][1]
+        end
+
+        for (s_name, s_inds) in scalars
+            if s_name[1]
+                name_translation[(s_name, s_inds)] = input_names[s_name[2]][1]
+            end
         end
 
         @assert isempty(get_trace_inds(inds1)) "Trace not implemented yet"
@@ -661,21 +760,7 @@ function make_code!(func::FortranFunction,
             end
         end
 
-        outdims = get_dims(dimdict, outorder)
-
-        allocating_output = false
-
-        if nameout[2] != 0 || outorder != (@view indsout[output_perm])
-            allocating_output = true
-            intermediate_name = get_intermediate_name!(func, outdims)
-            name_translation[(nameout, outorder)] = intermediate_name
-
-            if !isempty(outorder)
-                println("Allocating   $((nameout, outorder))")
-                println(func.code_body,
-                    "      call mem%alloc($intermediate_name, $(get_dimstr(outdims)))")
-            end
-        end
+        # Doing contraction
 
         left_tens, left_T, left_exinds, right_tens, right_T, right_exinds =
             if mulorder[1] == 1
@@ -700,45 +785,83 @@ function make_code!(func::FortranFunction,
 
         left_name = name_translation[left_tens]
         right_name = name_translation[right_tens]
-        out_name = get(name_translation, (nameout, outorder), output_name)
 
-        α = "one"
-        β = allocating_output ? "zero" : "one"
+        if m == "1" && k == "1"
+            name_translation[(nameout, outorder)] = right_name
+            scalar *= Sym(left_name)
+        elseif n == "1" && k == "1"
+            name_translation[(nameout, outorder)] = left_name
+            scalar *= Sym(right_name)
+        else
+            outdims = get_dims(dimdict, outorder)
 
-        println("Contracting  $left_tens * $right_tens \
-        -> $((nameout, outorder))")
+            allocating_output = false
 
-        println(
-            func.code_body,
-            """
-!
-      call dgemm('$(left_T ? 'T' : 'N')', '$(right_T ? 'T' : 'N')', &
-         $m, &
-         $n, &
-         $k, &
-         $α, &
-         $left_name, &
-         $lda, &
-         $right_name, &
-         $ldb, &
-         $β, &
-         $out_name, &
-         $ldc)
-!"""
-        )
+            if (nameout[2] != 0 || outorder != (@view indsout[output_perm])) &&
+               (!isempty(inds1) || !isempty(inds2))
+                allocating_output = true
+                intermediate_name = get_intermediate_name!(func, outdims)
+                name_translation[(nameout, outorder)] = intermediate_name
 
-        if !isempty(sorted_inds1) && (!name1[1] || sorting1)
-            println("Deallocating $((name1, sorted_inds1))")
-            old_name = name_translation[(name1, sorted_inds1)]
-            println(func.code_body,
-                "      call mem%dealloc($old_name)")
-        end
+                if !isempty(outorder)
+                    println("Allocating   $((nameout, outorder))")
+                    println(func.code_body,
+                        "      call mem%alloc($intermediate_name, $(get_dimstr(outdims)))")
+                end
+            end
 
-        if !isempty(sorted_inds2) && (!name2[1] || sorting2)
-            println("Deallocating $((name2, sorted_inds2))")
-            old_name = name_translation[(name2, sorted_inds2)]
-            println(func.code_body,
-                "      call mem%dealloc($old_name)")
+            out_name = get(name_translation, (nameout, outorder), output_name)
+
+            α = scalar * if !isempty(scalars)
+                prod(Sym(name_translation[s]) for s in scalars)
+            else
+                1
+            end
+            scalar = 1
+
+            β = allocating_output ? "zero" : "one"
+
+            if !allocating_output
+                has_output = true
+            end
+
+            println("Contracting  $left_tens * $right_tens \
+            -> $((nameout, outorder))")
+
+            println(
+                func.code_body,
+                """
+    !
+          call dgemm('$(left_T ? 'T' : 'N')', '$(right_T ? 'T' : 'N')', &
+             $m, &
+             $n, &
+             $k, &
+             $α, &
+             $left_name, &
+             $lda, &
+             $right_name, &
+             $ldb, &
+             $β, &
+             $out_name, &
+             $ldc)
+    !"""
+            )
+
+            # Contraction done
+
+            if !isempty(sorted_inds1) && (!name1[1] || sorting1)
+                println("Deallocating $((name1, sorted_inds1))")
+                old_name = name_translation[(name1, sorted_inds1)]
+                println(func.code_body,
+                    "      call mem%dealloc($old_name)")
+            end
+
+            if !isempty(sorted_inds2) && (!name2[1] || sorting2)
+                println("Deallocating $((name2, sorted_inds2))")
+                old_name = name_translation[(name2, sorted_inds2)]
+                println(func.code_body,
+                    "      call mem%dealloc($old_name)")
+            end
         end
 
         println()
@@ -756,14 +879,27 @@ function make_code!(func::FortranFunction,
 
     if !issorted(outperm)
         println("Sorting      $((outname, actual_outinds)) -> $((outname, outinds))")
-        old_name = name_translation[(outname, actual_outinds)]
+        old_name = get(name_translation, (outname, actual_outinds), output_name)
         println(func.code_body,
             "      call add_$(prod(string, invperm(outperm)))_to_\
-            $(prod(string, 1:length(outperm)))(one, $old_name, \
+            $(prod(string, 1:length(outperm)))($scalar, $old_name, \
             $output_name, $(get_dimstr(outdims)))")
 
-        println("Deallocating $((outname, actual_outinds))")
-        println(func.code_body,
-            "      call mem%dealloc($old_name)")
+        if !any(name == old_name for (name, _) in input_names)
+            println("Deallocating $((outname, actual_outinds))")
+            println(func.code_body,
+                "      call mem%dealloc($old_name)")
+        end
+    elseif !has_output
+        println("Output is scaled input")
+        old_name = name_translation[(outname, actual_outinds)]
+        if !isempty(outinds)
+            dimstr = get_compact_dimstr(outdims)
+            println(func.code_body,
+                "      call daxpy($dimstr, $scalar, $old_name, 1, $output_name, 1)")
+        else
+            println(func.code_body,
+                "      $output_name = $output_name + $scalar * $old_name")
+        end
     end
 end
