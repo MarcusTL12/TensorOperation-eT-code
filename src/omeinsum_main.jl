@@ -78,6 +78,10 @@ function test7()
     test_code(ein",ak,,kibj->aibj")
 end
 
+function test7_5()
+    test_code(ein"cl,,ak,,kibj,cl->aibj")
+end
+
 function test8()
     test_code(ein"ak,bj,ik,jb->ai")
 end

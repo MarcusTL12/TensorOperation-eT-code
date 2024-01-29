@@ -193,7 +193,7 @@ const ScaledStep{T} = Pair{Tens{T},Tuple{Vector{Tens{T}},Tens{T},Tens{T}}}
 function make_scaled_steps(steps::Vector{Step{T}}) where {T}
     newstepsdict = Dict([out => (Tens{T}[], in1, in2) for (out, (in1, in2)) in steps])
 
-    for (out, (in1, in2)) in reverse(steps)
+    for (out, (in1, in2)) in steps
         scalar, otherin = if isempty(in1[2]) && haskey(newstepsdict, in2)
             in1, in2
         elseif isempty(in2[2]) && haskey(newstepsdict, in1)
@@ -775,21 +775,13 @@ function make_code!(func::FortranFunction,
         right_exdims = get_dims(dimdict, right_exinds)
         contdims = get_dims(dimdict, continds1)
 
-        m = get_compact_dimstr(left_exdims)
-        n = get_compact_dimstr(right_exdims)
-        k = get_compact_dimstr(contdims)
-
-        lda = left_T ? k : m
-        ldb = right_T ? n : k
-        ldc = m
-
         left_name = name_translation[left_tens]
         right_name = name_translation[right_tens]
 
-        if m == "1" && k == "1"
+        if isempty(left_exinds) && isempty(continds)
             name_translation[(nameout, outorder)] = right_name
             scalar *= Sym(left_name)
-        elseif n == "1" && k == "1"
+        elseif isempty(right_exinds) && isempty(continds)
             name_translation[(nameout, outorder)] = left_name
             scalar *= Sym(right_name)
         else
@@ -828,24 +820,8 @@ function make_code!(func::FortranFunction,
             println("Contracting  $left_tens * $right_tens \
             -> $((nameout, outorder))")
 
-            println(
-                func.code_body,
-                """
-    !
-          call dgemm('$(left_T ? 'T' : 'N')', '$(right_T ? 'T' : 'N')', &
-             $m, &
-             $n, &
-             $k, &
-             $α, &
-             $left_name, &
-             $lda, &
-             $right_name, &
-             $ldb, &
-             $β, &
-             $out_name, &
-             $ldc)
-    !"""
-            )
+            simplify_dgemm(func.code_body, left_T, right_T, left_exdims,
+                right_exdims, contdims, α, left_name, right_name, β, out_name)
 
             # Contraction done
 
@@ -869,8 +845,7 @@ function make_code!(func::FortranFunction,
         intermediates_order[nameout[2]] = outorder
     end
 
-    outname = last(steps)[1][1]
-    outinds = last(steps)[1][2]
+    outname, outinds = last(steps)[1]
     outinds = outinds[output_perm]
     actual_outinds = intermediates_order[0]
     outdims = get_dims(dimdict, actual_outinds)
@@ -901,5 +876,216 @@ function make_code!(func::FortranFunction,
             println(func.code_body,
                 "      $output_name = $output_name + $scalar * $old_name")
         end
+    end
+end
+
+function simplify_dgemm(io::IO, leftT, rightT, leftexdims, rightexdims,
+    contdims, α, leftname, rightname, β, outname)
+    m = get_compact_dimstr(leftexdims)
+    n = get_compact_dimstr(rightexdims)
+    k = get_compact_dimstr(contdims)
+
+    lda = leftT ? k : m
+    ldb = rightT ? n : k
+    ldc = m
+
+    beta = false
+
+    if β == "one"
+        beta = true
+    elseif β != "zero"
+        throw("β is $β")
+    end
+
+    use_ddot = false
+
+    if k == "1"
+        if m == "1" && n == "1"
+            println("Scalar scalar multiplication")
+            print(io, "      $outname = ")
+            if beta
+                print(io, "$outname")
+            end
+            if isone(α)
+                print(io, " + ")
+            elseif isone(-α)
+                print(io, " - ")
+            else
+                print(io, " + $(make_eT_num(α)) * ")
+            end
+
+            println(io, "$leftname * $rightname")
+        elseif n == "1"
+            println("daxpy")
+            if !beta
+                println(io, "      call zero_array($outname, $m)")
+            end
+            println(io,
+                "      call daxpy($m, $(make_eT_num(α * Sym(rightname))), \
+                $leftname, 1, $outname, 1)")
+        elseif m == "1"
+            println("daxpy")
+            if !beta
+                println(io, "      call zero_array($outname, $n)")
+            end
+            println(io,
+                "      call daxpy($n, $(make_eT_num(α * Sym(leftname))), \
+                $rightname, 1, $outname, 1)")
+        else
+            println("dger")
+            println(
+                io,
+                """
+!
+      call dger($m,
+         $n, &
+         $(make_eT_num(α)), &
+         $leftname, 1, &
+         $rightname, 1, &
+         $outname, &
+         $ldc)
+!"""
+            )
+        end
+    elseif m == "1" && n == "1"
+        println("ddot")
+        print(io, "      $outname = ")
+        if beta
+            print(io, "$outname")
+
+            if isone(α)
+                print(io, " + ")
+            elseif isone(-α)
+                print(io, " - ")
+            else
+                print(io, " + $(make_eT_num(α)) * ")
+            end
+        else
+            if isone(-α)
+                print(io, " -")
+            elseif !isone(α)
+                print(io, "$(make_eT_num(α)) * ")
+            end
+        end
+
+        println(io, "ddot($k, $leftname, 1, $rightname, 1)")
+    elseif n == "1"
+        println("dgemv")
+        println(
+            io,
+            """
+!
+      call dgemv('$(leftT ? 'T' : 'N')', &
+         $(leftT ? k : m), &
+         $(leftT ? m : k), &
+         $(make_eT_num(α)), &
+         $leftname, &
+         $lda, &
+         $rightname, 1, &
+         $β, &
+         $outname, 1)
+!"""
+        )
+    elseif m == "1"
+        println("dgemv")
+        println(
+            io,
+            """
+!
+      call dgemv('$(rightT ? 'N' : 'T')', &
+         $(rightT ? n : k), &
+         $(rightT ? k : n), &
+         $(make_eT_num(α)), &
+         $rightname, &
+         $ldb, &
+         $leftname, 1, &
+         $β, &
+         $outname, 1)
+!"""
+        )
+    else
+        println("dgemm")
+
+        println(
+            io,
+            """
+!
+      call dgemm('$(leftT ? 'T' : 'N')', '$(rightT ? 'T' : 'N')', &
+         $m, &
+         $n, &
+         $k, &
+         $(make_eT_num(α)), &
+         $leftname, &
+         $lda, &
+         $rightname, &
+         $ldb, &
+         $β, &
+         $outname, &
+         $ldc)
+!"""
+        )
+    end
+
+    use_ddot
+end
+
+function make_eT_num(x)
+    make_eT_num(Sym(x))
+end
+
+function make_eT_num(x::Sym)
+    if iszero(x)
+        return "zero"
+    end
+
+    pref, rest = Sym.(x.o.primitive())
+
+    if isone(rest)
+        make_eT_num_words(pref)
+    else
+        rest_str = replace(string(rest), "^" => "**")
+
+        if startswith(rest_str, "-")
+            rest_str = rest_str[2:end]
+            "-"
+        else
+            ""
+        end *
+        if !isone(pref)
+            "$(make_eT_num_words(pref))*$rest_str"
+        else
+            rest_str
+        end
+    end
+end
+
+function make_eT_num_words(x)
+    isneg = false
+    if x isa Float64 || x isa Integer
+        isneg = x < 0
+        if isneg
+            x = -x
+        end
+        x = round(x, digits=14)
+    end
+    if isneg
+        "-"
+    else
+        ""
+    end *
+    if iszero(x)
+        "zero"
+    elseif isone(x)
+        "one"
+    elseif x == 2
+        "two"
+    elseif x == 3
+        "three"
+    elseif x == 4
+        "four"
+    elseif x == 1 // 2
+        "half"
+    else
+        "$(x)d0"
     end
 end
