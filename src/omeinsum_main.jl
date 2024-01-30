@@ -15,7 +15,6 @@ function test_code(code, outname, names=make_tmp_inputnames(code),
     @show optcode
 
     steps = walk_einsums(optcode)
-    steps = make_scaled_steps(steps)
 
     display(steps)
 
@@ -25,8 +24,7 @@ function test_code(code, outname, names=make_tmp_inputnames(code),
 
     println()
 
-    func = FortranFunction(IOBuffer(), outname,
-        Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false))
+    func = FortranFunction(outname)
 
     dimdict = make_ov_dimdict(code)
 
@@ -35,7 +33,6 @@ function test_code(code, outname, names=make_tmp_inputnames(code),
     make_code!(func, choices, names, perms, outname[1], outperm, dimdict, prefactor, steps)
     println()
 
-    # println(String(take!(func.code_body)))
     println(finalize_eT_function(func, "test", "ccs"))
 end
 
@@ -102,14 +99,18 @@ end
 function test12()
     code = ein"aicj,bc->aibj"
 
-    inputperms = make_trivial_inputperms(code)
+    A = ("A", true, [[1, 2, 3, 4], [3, 4, 1, 2]])
+    B = ("B", true)
 
-    push!(inputperms[1], [3, 4, 1, 2])
+    outperms = [[1, 2, 3, 4], [3, 4, 1, 2]]
 
-    outperms = make_trivial_outperm(code)
-    push!(outperms, [3, 4, 1, 2])
+    func = FortranFunction(("X", ["v", "o", "v", "o"]))
 
-    test_code(code, [("A", true), ("B", true)], "X", inputperms, outperms)
+    update_code!(func, code, -3, [A, B], outperms)
+
+    open("tmp.f90", "w") do io
+        println(io, finalize_eT_function(func, "rho_test", "qed_ccsd"))
+    end
 end
 
 function test13()
@@ -138,4 +139,42 @@ end
 
 function test18()
     test_code(ein",ijji->", ("X", String[]))
+end
+
+function test19()
+    h_oo = ("h_oo", true)
+    g_oooo = ("g_oooo", true)
+
+    func = FortranFunction("E")
+
+    update_code!(func, ein"ii->", 2, [h_oo])
+    update_code!(func, ein"iijj->", 2, [g_oooo])
+    update_code!(func, ein"ijji->", -1, [g_oooo])
+
+    println(finalize_eT_function(func, "hf_energy", "ccs"))
+end
+
+function test20()
+    #  cs_vo[a,i]*d_ov[k,c]*u_vovo[b,j,c,k]
+    # -ct_vo[a,k]*d_ov[k,c]*t_vovo[b,j,c,i]*γ₁
+    # -ct_vo[c,i]*d_ov[k,c]*t_vovo[a,k,b,j]*γ₁
+
+    ct = ("ct_vo", true)
+    cs = ("cs_vo", true)
+    d_ov = ("d_ov", true)
+    t_vovo = ("t_vovo", true, [[1, 2, 3, 4], [3, 4, 1, 2]])
+    u_vovo = ("wf%u_aibj", false, [[1, 2, 3, 4], [3, 4, 1, 2]])
+    γ = ("wf%s0", false)
+
+    outperms = [[1, 2, 3, 4], [3, 4, 1, 2]]
+
+    func = FortranFunction(("rho_vovo", ["v", "o", "v", "o"]))
+
+    update_code!(func, ein"ai,kc,bjck->aibj", 1, [cs, d_ov, u_vovo], outperms)
+    update_code!(func, ein"ak,kc,bjci,->aibj", -1, [ct, d_ov, t_vovo, γ], outperms)
+    update_code!(func, ein"ci,kc,akbj,->aibj", -1, [ct, d_ov, t_vovo, γ], outperms)
+
+    open("tmp.f90", "w") do io
+        println(io, finalize_eT_function(func, "rho_test", "qed_ccsd"))
+    end
 end

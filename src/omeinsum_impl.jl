@@ -106,7 +106,7 @@ function walk_einsums(code::DynamicNestedEinsum{T}) where {T}
     steps = Step{T}[]
     walk_einsums!(steps, code)
     sort_scalars_first!(steps)
-    steps
+    make_scaled_steps(steps)
 end
 
 function walk_einsums(code)
@@ -531,6 +531,16 @@ struct FortranFunction
     local_variables::Vector{Tuple{String,Int}}
     n_integers::Ref{Int}
     use_ddot::Ref{Bool}
+
+    function FortranFunction(outname)
+        new(IOBuffer(), outname,
+            Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false))
+    end
+
+    function FortranFunction(outname::String)
+        new(IOBuffer(), (outname, String[]),
+            Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false))
+    end
 end
 
 function get_intermediate_name!(func::FortranFunction, dims)
@@ -617,7 +627,7 @@ function make_code!(func::FortranFunction,
 
             println("Tracing      $((name1, collect(full_inds1))) -> $((name1, inds1))")
             old_name = name_translation[(name1, full_inds1)]
-            make_trace_code!(func, dimdict, old_name, full_inds1, intermediate_name, inds1, trace_inds1)
+            make_trace_code!(func, dimdict, old_name, full_inds1, intermediate_name, inds1, trace_inds1, true)
         end
 
         tracing2 = false
@@ -635,7 +645,7 @@ function make_code!(func::FortranFunction,
 
             println("Tracing      $((name1, collect(full_inds2))) -> $((name1, inds2))")
             old_name = name_translation[(name2, full_inds2)]
-            make_trace_code!(func, dimdict, old_name, full_inds2, intermediate_name, inds2, trace_inds2)
+            make_trace_code!(func, dimdict, old_name, full_inds2, intermediate_name, inds2, trace_inds2, true)
         end
 
         continds = intersect(inds1, inds2)
@@ -859,7 +869,7 @@ function make_code!(func::FortranFunction,
         old_name = get(name_translation, (outname, actual_outinds), output_name)
         println(func.code_body,
             "      call add_$(prod(string, invperm(outperm)))_to_\
-            $(prod(string, 1:length(outperm)))($scalar, $old_name, \
+            $(prod(string, 1:length(outperm)))($(make_eT_num(scalar)), $old_name, \
             $output_name, $(get_dimstr(outdims)))")
 
         if !any(name == old_name for (name, _) in input_names)
@@ -873,10 +883,18 @@ function make_code!(func::FortranFunction,
         if !isempty(outinds)
             dimstr = get_compact_dimstr(outdims)
             println(func.code_body,
-                "      call daxpy($dimstr, $scalar, $old_name, 1, $output_name, 1)")
+                "      call daxpy($dimstr, $(make_eT_num(scalar)), $old_name, 1, $output_name, 1)")
         else
-            println(func.code_body,
-                "      $output_name = $output_name + $scalar * $old_name")
+            if isone(scalar)
+                println(func.code_body,
+                    "      $output_name = $output_name + $old_name")
+            elseif isone(-scalar)
+                println(func.code_body,
+                    "      $output_name = $output_name - $old_name")
+            else
+                println(func.code_body,
+                    "      $output_name = $output_name + $(make_eT_num(scalar)) * $old_name")
+            end
         end
     end
 end
@@ -1044,6 +1062,8 @@ function make_eT_num(x::Sym)
 
     if isone(rest)
         make_eT_num_words(pref)
+    elseif isone(-rest)
+        "-" * make_eT_num_words(pref)
     else
         rest_str = replace(string(rest), "^" => "**")
 
@@ -1093,7 +1113,7 @@ function make_eT_num_words(x)
 end
 
 function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
-    to_name, to_inds, trace_inds)
+    to_name, to_inds, trace_inds, set_zero)
     n_loop_indices = length(to_inds) + length(trace_inds)
 
     func.n_integers[] = max(func.n_integers[], n_loop_indices)
@@ -1127,11 +1147,13 @@ function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
 
     outdims = get_dims(dimdict, to_inds)
 
-    if isempty(to_inds)
-        println(func.code_body, "      $to_name = zero")
-    else
-        println(func.code_body,
-            "      call zero_array($to_name, $(get_compact_dimstr(outdims)))")
+    if set_zero
+        if isempty(to_inds)
+            println(func.code_body, "      $to_name = zero")
+        else
+            println(func.code_body,
+                "      call zero_array($to_name, $(get_compact_dimstr(outdims)))")
+        end
     end
 
     tab_level = 2
@@ -1246,7 +1268,7 @@ function finalize_eT_function(func::FortranFunction, routine_name, wf_type)
         print(io, "), ")
     end
 
-    println(io, "intent(in) :: ", func.output_param[1], "\n!")
+    println(io, "intent(inout) :: ", func.output_param[1], "\n!")
 
     structure_dict = Dict()
 
@@ -1277,7 +1299,7 @@ function finalize_eT_function(func::FortranFunction, routine_name, wf_type)
             print(io, ")")
         end
 
-        print(io, ", intent(inout) :: ")
+        print(io, ", intent(in) :: ")
 
         isfirst = true
         for name in names
@@ -1291,8 +1313,56 @@ function finalize_eT_function(func::FortranFunction, routine_name, wf_type)
         println(io, "")
     end
 
+    println(io, "!")
+
+    dim_dict = Dict()
+
+    for (name, n) in func.local_variables
+        if !haskey(dim_dict, n)
+            dim_dict[n] = String[]
+        end
+        push!(dim_dict[n], name)
+    end
+
+    dim_sort = sort!(collect(dim_dict))
+
+    for (n, names) in dim_sort
+        print(io, "      real(dp)")
+        if n > 0
+            print(io, ", dimension(")
+            isfirst = true
+            for _ in 1:n
+                if isfirst
+                    isfirst = false
+                else
+                    print(io, ",")
+                end
+
+                print(io, ":")
+            end
+            print(io, "), allocatable")
+        end
+
+        print(io, " :: ")
+
+        isfirst = true
+        for name in names
+            if isfirst
+                isfirst = false
+            else
+                print(io, ", ")
+            end
+            print(io, name)
+        end
+        println(io, "")
+    end
+
+    if !isempty(func.local_variables)
+        println(io, "!")
+    end
+
     if func.n_integers[] > 0
-        print(io, "!\n      integer :: ")
+        print(io, "      integer :: ")
         isfirst = true
         for i in 1:func.n_integers[]
             if isfirst
@@ -1302,18 +1372,67 @@ function finalize_eT_function(func::FortranFunction, routine_name, wf_type)
             end
             print(io, "i$i")
         end
-        println(io, "")
+        println(io, "\n!")
     end
 
     if func.use_ddot[]
-        println(io, "!\n      real(dp), external :: ddot")
+        println(io, "      real(dp), external :: ddot\n!")
     end
-
-    println(io, "!")
 
     print(io, String(take!(func.code_body)))
 
     println(io, "!\n   end subroutine $routine_name")
 
     String(take!(io))
+end
+
+function make_single_tensor_code!(func::FortranFunction, code, name,
+    dimdict, prefactor)
+    from_inds = only(getixsv(code))
+    to_inds = getiyv(code)
+
+    inds, trace_inds = partition_trace_inds(from_inds)
+
+    @assert to_inds == inds "Needs to sort trace"
+
+    if name[2]
+        dims = get_dims(dimdict, from_inds)
+        if (name[1], dims) ∉ func.input_parameters
+            push!(func.input_parameters, (name[1], dims))
+        end
+    end
+
+    make_trace_code!(func, dimdict, name[1], from_inds, func.output_param[1],
+        to_inds, trace_inds, false)
+end
+
+function update_code!(func::FortranFunction, code, prefactor, names_perms,
+    outperms=make_trivial_outperm(code))
+
+    names = [(name, isinp) for (name, isinp, _...) in names_perms]
+    inputperms = make_trivial_inputperms(code)
+    for (i, inp) in enumerate(names_perms)
+        if length(inp) >= 3
+            inputperms[i] = inp[3]
+        end
+    end
+
+    dimdict = make_ov_dimdict(code)
+
+    if length(getixsv(code)) == 1
+        return make_single_tensor_code!(func, code, names[1],
+            dimdict, prefactor)
+    end
+
+    cost = make_ov_cost(code)
+
+    optcode = optimize_code(code, cost, GreedyMethod())
+
+    steps = walk_einsums(optcode)
+
+    choices, perms, outperm, _ =
+        optimize_choices(cost, steps, inputperms, outperms)
+
+    make_code!(func, choices, names, perms, func.output_param[1], outperm,
+        dimdict, prefactor, steps)
 end
