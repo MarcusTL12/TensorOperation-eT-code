@@ -178,3 +178,26 @@ function test20()
         println(io, finalize_eT_function(func, "rho_test", "qed_ccsd"))
     end
 end
+
+function test21()
+    # rho[] += 2*F_ov[i,a]*cs_vo[a,i]
+    # rho[] += 2*L_ovov[i,a,j,b]*cs_vovo[a,i,b,j]
+    # rho[] += 2*L_ovov[i,a,j,b]*ct_vo[a,i]*s_vo[b,j]
+
+    ct = ("ct_vo", true)
+    cs = ("cs_vo", true)
+    F_ov = ("wf%fock_ia", false)
+    s_vo = ("wf%s1", false)
+    L_ovov = ("L_ovov", true, [[1, 2, 3, 4], [3, 4, 1, 2]])
+    cs_vovo = ("cs_vovo", true, [[1, 2, 3, 4], [3, 4, 1, 2]])
+
+    func = FortranFunction("rho")
+
+    update_code!(func, ein"ia,ai->", 2, [F_ov, cs])
+    update_code!(func, ein"iajb,aibj->", 2, [L_ovov, cs_vovo])
+    update_code!(func, ein"iajb,ai,bj->", 2, [L_ovov, ct, s_vo])
+
+    open("tmp.f90", "w") do io
+        println(io, finalize_eT_function(func, "rho_test", "qed_ccsd"))
+    end
+end
