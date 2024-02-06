@@ -201,3 +201,28 @@ function test21()
         println(io, finalize_eT_function(func, "rho_test", "qed_ccsd"))
     end
 end
+
+function test22()
+    test_code(ein"(aibj,jb,ac),ci->", ("X", ["v", "o"]))
+end
+
+function test23()
+    A = ("A", true)
+    B = ("B", true)
+
+    func = FortranFunction("X")
+
+    update_code!(func, ein"jb,aibj,ia->", 2, [B, A, B])
+
+    open("tmp.f90", "w") do io
+        println(io, finalize_eT_function(func, "rho_test", "qed_ccsd"))
+    end
+end
+
+function test24()
+    test_code(ein",iajb->aibj", ("X", ["v", "o"]))
+end
+
+function test25()
+    test_code(ein"kaib,k->aib", ("X", ["v", "o", "v"]))
+end

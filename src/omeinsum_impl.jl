@@ -605,7 +605,12 @@ function make_code!(func::FortranFunction,
 
         for (s_name, s_inds) in scalars
             if s_name[1]
+                i_name, is_inp = input_names[s_name[2]]
                 name_translation[(s_name, s_inds)] = input_names[s_name[2]][1]
+                name_entry = (i_name, String[])
+                if is_inp && name_entry ∉ func.input_parameters
+                    push!(func.input_parameters, name_entry)
+                end
             end
         end
 
@@ -957,7 +962,7 @@ function simplify_dgemm(io::IO, leftT, rightT, leftexdims, rightexdims,
                 io,
                 """
 !
-      call dger($m,
+      call dger($m, &
          $n, &
          $(make_eT_num(α)), &
          $leftname, 1, &
@@ -969,6 +974,7 @@ function simplify_dgemm(io::IO, leftT, rightT, leftexdims, rightexdims,
         end
     elseif m == "1" && n == "1"
         println("ddot")
+        use_ddot = true
         print(io, "      $outname = ")
         if beta
             print(io, "$outname")
