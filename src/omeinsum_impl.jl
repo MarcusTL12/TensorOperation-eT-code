@@ -1165,22 +1165,22 @@ function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
     tab_level = 2
 
     println(func.code_body, "!")
-    print(func.code_body, "!\$omp parallel do schedule(static)")
-    if n_loop_indices > 1
-        print(func.code_body, " collapse($n_loop_indices)")
-    end
-    print(func.code_body, " private(")
+    # print(func.code_body, "!\$omp parallel do schedule(static)")
+    # if n_loop_indices > 1
+    #     print(func.code_body, " collapse($n_loop_indices)")
+    # end
+    # print(func.code_body, " private(")
 
-    isfirst = true
-    for i in 1:n_loop_indices
-        if isfirst
-            isfirst = false
-        else
-            print(func.code_body, ",")
-        end
-        print(func.code_body, "i$i")
-    end
-    println(func.code_body, ")")
+    # isfirst = true
+    # for i in 1:n_loop_indices
+    #     if isfirst
+    #         isfirst = false
+    #     else
+    #         print(func.code_body, ",")
+    #     end
+    #     print(func.code_body, "i$i")
+    # end
+    # println(func.code_body, ")")
 
     for i in reverse(1:n_loop_indices)
         println(func.code_body, "   "^tab_level, "do i$i = 1, ", index_dims[i])
@@ -1224,7 +1224,7 @@ function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
         println(func.code_body, "   "^tab_level, "end do")
     end
 
-    println(func.code_body, "!\$omp end parallel do")
+    # println(func.code_body, "!\$omp end parallel do")
     println(func.code_body, "!")
 end
 
