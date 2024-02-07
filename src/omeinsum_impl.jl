@@ -34,6 +34,8 @@ function make_ov_cost(code::Union{StaticEinCode{Char},DynamicEinCode{Char},Stati
     for i in keys(cost)
         if i in "abcdefg"
             cost[i] *= 10
+        elseif i == 'z'
+            cost[i] *= 50
         end
     end
     cost
@@ -52,6 +54,8 @@ function make_ov_dimdict(code::Union{StaticEinCode{Char},DynamicEinCode{Char},St
                 "o"
             elseif i in "abcdefgh"
                 "v"
+            elseif i == 'z'
+                "J"
             end
     end
     dimdict
@@ -522,6 +526,7 @@ eT_dim_dict::Dict{String,String} = Dict{String,String}([
     "v" => "wf%n_v",
     "o" => "wf%n_o",
     "g" => "wf%n_mo",
+    "J" => "wf%eri_t1%n_J",
 ])
 
 struct FortranFunction
