@@ -865,7 +865,7 @@ function make_code!(func::FortranFunction,
     outname, outinds = last(steps)[1]
     outinds = outinds[output_perm]
     actual_outinds = intermediates_order[0]
-    outdims = get_dims(dimdict, actual_outinds)
+    outdims = get_dims(dimdict, outinds)
 
     outperm = get_permutation(actual_outinds, outinds)
 
