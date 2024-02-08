@@ -226,3 +226,7 @@ end
 function test25()
     test_code(ein"kaib,k->aib", ("X", ["v", "o", "v"]))
 end
+
+function test26()
+    test_code(ein"jbkc,ai,bj,ck,->ai", ("X", ["v", "o"]))
+end

@@ -872,6 +872,14 @@ function make_code!(func::FortranFunction,
     actual_outinds = intermediates_order[0]
     outdims = get_dims(dimdict, outinds)
 
+    out_scalars = last(steps)[2][1]
+
+    α = scalar * if !isempty(out_scalars)
+        prod(Sym(name_translation[s]) for s in out_scalars)
+    else
+        1
+    end
+
     outperm = get_permutation(actual_outinds, outinds)
 
     if !issorted(outperm)
@@ -879,7 +887,7 @@ function make_code!(func::FortranFunction,
         old_name = get(name_translation, (outname, actual_outinds), output_name)
         println(func.code_body,
             "      call add_$(prod(string, invperm(outperm)))_to_\
-            $(prod(string, 1:length(outperm)))($(make_eT_num(scalar)), $old_name, \
+            $(prod(string, 1:length(outperm)))($(make_eT_num(α)), $old_name, \
             $output_name, $(get_dimstr(outdims)))")
 
         if !any(name == old_name for (name, _) in input_names)
@@ -889,21 +897,22 @@ function make_code!(func::FortranFunction,
         end
     elseif !has_output
         println("Output is scaled input")
+
         old_name = name_translation[(outname, actual_outinds)]
         if !isempty(outinds)
             dimstr = get_compact_dimstr(outdims)
             println(func.code_body,
-                "      call daxpy($dimstr, $(make_eT_num(scalar)), $old_name, 1, $output_name, 1)")
+                "      call daxpy($dimstr, $(make_eT_num(α)), $old_name, 1, $output_name, 1)")
         else
-            if isone(scalar)
+            if isone(α)
                 println(func.code_body,
                     "      $output_name = $output_name + $old_name")
-            elseif isone(-scalar)
+            elseif isone(-α)
                 println(func.code_body,
                     "      $output_name = $output_name - $old_name")
             else
                 println(func.code_body,
-                    "      $output_name = $output_name + $(make_eT_num(scalar)) * $old_name")
+                    "      $output_name = $output_name + $(make_eT_num(α)) * $old_name")
             end
         end
     end
