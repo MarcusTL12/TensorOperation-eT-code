@@ -1116,8 +1116,32 @@ function make_eT_num_words(x)
         "three"
     elseif x == 4
         "four"
+    elseif x == 5
+        "five"
+    elseif x == 6
+        "six"
+    elseif x == 7
+        "seven"
+    elseif x == 8
+        "eight"
+    elseif x == 9
+        "nine"
+    elseif x == 10
+        "ten"
+    elseif x == 11
+        "eleven"
     elseif x == 1 // 2
         "half"
+    elseif x == 1 // 3
+        "third"
+    elseif x == 1 // 4
+        "quarter"
+    elseif x == 1 // 6
+        "sixth"
+    elseif x == 1 // 8
+        "eighth"
+    elseif x == 1 // 10
+        "tenth"
     else
         "$(x)d0"
     end
@@ -1437,7 +1461,8 @@ function update_code!(func::FortranFunction, code, prefactor, names_perms,
 
     cost = make_ov_cost(code)
 
-    optcode = optimize_code(code, cost, GreedyMethod())
+    optcode = optimize_code(code, cost, KaHyParBipartite(sc_target=28))
+    # optcode = optimize_code(code, cost, GreedyMethod())
 
     steps = walk_einsums(optcode)
 
