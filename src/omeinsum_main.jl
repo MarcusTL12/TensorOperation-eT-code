@@ -230,3 +230,11 @@ end
 function test26()
     test_code(ein"jbkc,ai,bj,ck,->ai", ("X", ["v", "o"]))
 end
+
+function test27()
+    test_code(ein"pq,ab,pqab->", ("X", []))
+end
+
+function test28()
+    test_code(ein"aj,ib,->aibj", ("X", ["v", "o", "v", "o"]))
+end

@@ -747,7 +747,7 @@ function make_code!(func::FortranFunction,
                 "      call sort_to_$(prod(string, perm1))($old_name, \
                 $intermediate_name, $(get_dimstr(dims1)))")
 
-            if !name1[1]
+            if !name1[1] && !any(name == old_name for (name, _) in input_names)
                 println("Deallocating $((name1, inds1))")
                 println(func.code_body,
                     "      call mem%dealloc($old_name)")
@@ -772,7 +772,7 @@ function make_code!(func::FortranFunction,
                 "      call sort_to_$(prod(string, perm2))($old_name, \
                 $intermediate_name, $(get_dimstr(dims2)))")
 
-            if !name2[1]
+            if !name2[1] && !any(name == old_name for (name, _) in input_names)
                 println("Deallocating $((name2, inds2))")
                 println(func.code_body,
                     "      call mem%dealloc($old_name)")
@@ -848,17 +848,21 @@ function make_code!(func::FortranFunction,
             # Contraction done
 
             if !isempty(sorted_inds1) && (!name1[1] || sorting1 || tracing1)
-                println("Deallocating $((name1, sorted_inds1))")
                 old_name = name_translation[(name1, sorted_inds1)]
-                println(func.code_body,
-                    "      call mem%dealloc($old_name)")
+                if !any(name == old_name for (name, _) in input_names)
+                    println("Deallocating $((name1, sorted_inds1))")
+                    println(func.code_body,
+                        "      call mem%dealloc($old_name)")
+                end
             end
 
             if !isempty(sorted_inds2) && (!name2[1] || sorting2 || tracing2)
-                println("Deallocating $((name2, sorted_inds2))")
                 old_name = name_translation[(name2, sorted_inds2)]
-                println(func.code_body,
-                    "      call mem%dealloc($old_name)")
+                if !any(name == old_name for (name, _) in input_names)
+                    println("Deallocating $((name2, sorted_inds2))")
+                    println(func.code_body,
+                        "      call mem%dealloc($old_name)")
+                end
             end
         end
 
