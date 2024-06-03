@@ -1,29 +1,12 @@
-let
-    func = FortranFunction(("sigma_vovo", ["v", "o", "v", "o"]))
-    outperms = [[1, 2, 3, 4], [3, 4, 1, 2]]
-    bs_vo = ("bs_vo", true)
-    d_ov = ("d_ov", true)
-    bt_vo = ("bt_vo", true)
-    γ₁ = ("wf%s0", false)
-    bs_vovo = ("bs_vovo", true, [[1, 2, 3, 4], [3, 4, 1, 2]])
-    d_oo = ("d_oo", true)
-    d_vv = ("d_vv", true)
-    bt_vovo = ("bt_vovo", true, [[1, 2, 3, 4], [3, 4, 1, 2]])
-    s_vo = ("wf%s1", false)
-    update_code!(func, ein"ai,jb->aibj", 2//1, [bs_vo, d_ov], outperms)
-    update_code!(func, ein"aj,ib->aibj", -1//1, [bs_vo, d_ov], outperms)
-    update_code!(func, ein"ai,jb,->aibj", 2//1, [bt_vo, d_ov, γ₁], outperms)
-    update_code!(func, ein"aj,ib,->aibj", -1//1, [bt_vo, d_ov, γ₁], outperms)
-    update_code!(func, ein"aibk,jk->aibj", -1//1, [bs_vovo, d_oo], outperms)
-    update_code!(func, ein"aicj,cb->aibj", 1//1, [bs_vovo, d_vv], outperms)
-    update_code!(func, ein"aibk,jk,->aibj", -1//1, [bt_vovo, d_oo, γ₁], outperms)
-    update_code!(func, ein"aicj,cb,->aibj", 1//1, [bt_vovo, d_vv, γ₁], outperms)
-    update_code!(func, ein"aibk,jc,ck->aibj", -1//1, [bt_vovo, d_ov, s_vo], outperms)
-    update_code!(func, ein"aicj,kb,ck->aibj", -1//1, [bt_vovo, d_ov, s_vo], outperms)
-    update_code!(func, ein"aick,jb,ck->aibj", 2//1, [bt_vovo, d_ov, s_vo], outperms)
-    update_code!(func, ein"ajck,ib,ck->aibj", -1//1, [bt_vovo, d_ov, s_vo], outperms)
-    update_code!(func, ein"aibk,jc,ck,->aibj", -1//1, [bs_vovo, d_ov, s_vo, γ₁], outperms)
-    update_code!(func, ein"aicj,kb,ck,->aibj", -1//1, [bs_vovo, d_ov, s_vo, γ₁], outperms)
-    finalize_eT_function(func, "jacobian_transpose_qed_ccsd_bilinear_t2", "qed_ccsd")
+include("src/omeinsum_impl.jl")
+
+s = let
+    func = FortranFunction(("omega_vv", ["v", "v"]))
+    outperms = [[1, 2], [2, 1]]
+    L_J_vv = ("L_J_vv", true)
+    γ_vv = ("gamma_vv", true)
+    update_code!(func, ein"zac,zbd,cd->ab", 1//1, [L_J_vv, L_J_vv, γ_vv])
+    finalize_eT_function(func, "omega_1_ai", "qed_ccsd_2")
 end
 
+println(s)

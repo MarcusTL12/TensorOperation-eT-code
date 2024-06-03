@@ -29,13 +29,18 @@ function get_partition_perm(inds, continds)
     invperm(order)
 end
 
+# abcdefg h ijklmno pqrstuv wxyz æøå
 function make_ov_cost(code::Union{StaticEinCode{Char},DynamicEinCode{Char},StaticNestedEinsum{Char}})
     cost = uniformsize(code, 10)
     for i in keys(cost)
         if i in "abcdefg"
             cost[i] *= 10
-        elseif i == 'z'
+        elseif i in "pqrstuv"
+            cost[i] *= 10
+        elseif i == 'h'
             cost[i] *= 50
+        elseif i in "wxyz"
+            cost[i] *= 5
         end
     end
     cost
@@ -48,14 +53,16 @@ function make_ov_dimdict(code::Union{StaticEinCode{Char},DynamicEinCode{Char},St
     cost = uniformsize(code, 10)
     for i in keys(cost)
         dimdict[i] =
-            if i in "pqrstuvw"
+            if i in "pqrstuv"
                 "g"
             elseif i in "ijklmno"
                 "o"
-            elseif i in "abcdefgh"
+            elseif i in "abcdefg"
                 "v"
-            elseif i == 'z'
+            elseif i == 'h'
                 "J"
+            elseif i in "wxyz"
+                "a"
             end
     end
     dimdict
@@ -526,6 +533,7 @@ eT_dim_dict::Dict{String,String} = Dict{String,String}([
     "v" => "wf%n_v",
     "o" => "wf%n_o",
     "g" => "wf%n_mo",
+    "a" => "wf%n_ao",
     "J" => "wf%eri_t1%n_J",
 ])
 
@@ -536,15 +544,16 @@ struct FortranFunction
     local_variables::Vector{Tuple{String,Int}}
     n_integers::Ref{Int}
     use_ddot::Ref{Bool}
+    total_sort_cost::Ref{Int}
 
     function FortranFunction(outname)
         new(IOBuffer(), outname,
-            Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false))
+            Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false), Ref(0))
     end
 
     function FortranFunction(outname::String)
         new(IOBuffer(), (outname, String[]),
-            Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false))
+            Tuple{String,Vector{String}}[], Tens[], Ref(0), Ref(false), Ref(0))
     end
 end
 
@@ -876,13 +885,7 @@ function make_code!(func::FortranFunction,
     actual_outinds = intermediates_order[0]
     outdims = get_dims(dimdict, outinds)
 
-    out_scalars = last(steps)[2][1]
-
-    α = scalar * if !isempty(out_scalars)
-        prod(Sym(name_translation[s]) for s in out_scalars)
-    else
-        1
-    end
+    α = scalar
 
     outperm = get_permutation(actual_outinds, outinds)
 
@@ -1271,6 +1274,9 @@ function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
 end
 
 function finalize_eT_function(func::FortranFunction, routine_name, wf_type)
+    println("Finalizing eT function with total sort cost:\n",
+        func.total_sort_cost[])
+
     io = IOBuffer()
 
     routine_name = "$(routine_name)_$(wf_type)"
@@ -1479,8 +1485,10 @@ function update_code!(func::FortranFunction, code, prefactor, names_perms,
 
     steps = walk_einsums(optcode)
 
-    choices, perms, outperm, _ =
+    choices, perms, outperm, score =
         optimize_choices(cost, steps, inputperms, outperms)
+
+    func.total_sort_cost[] += score
 
     make_code!(func, choices, names, perms, func.output_param[1], outperm,
         dimdict, prefactor, steps)

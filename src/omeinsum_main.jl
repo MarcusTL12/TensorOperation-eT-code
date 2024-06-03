@@ -238,3 +238,27 @@ end
 function test28()
     test_code(ein"aj,ib,->aibj", ("X", ["v", "o", "v", "o"]))
 end
+
+function test29()
+    test_code(ein"wxyz,wa,xc,yb,zd,cidj->aibj", ("omega", ["v", "o", "v", "o"]))
+end
+
+function test30()
+    test_code(ein"ak,kj,bi->ai", ("X", ["v", "o"]))
+end
+
+function test31()
+    test_code(ein"ac,bicj,->aibj", ("X", ["v", "o", "v", "o"]))
+end
+
+function test32()
+    test_code(ein"ac,cjbi,->aibj", ("X", ["v", "o", "v", "o"]))
+end
+
+function test33()
+    test_code(ein"ajbi,->aibj", ("X", []))
+end
+
+function test34()
+    test_code(ein"ac,cjbi,kl,kl->aibj", ("X", ["v", "o", "v", "o"]))
+end
