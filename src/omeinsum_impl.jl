@@ -583,6 +583,9 @@ function make_code!(func::FortranFunction,
     for ((mulorder, whichcontperm, ex1perm, ex2perm),
         ((nameout, indsout), (scalars, (name1, _inds1), (name2, _inds2)))) in
         zip(choices, steps)
+
+        @show scalars
+
         full_inds1 = if name1[1]
             name, is_inp = input_names[name1[2]]
             if is_inp
@@ -809,6 +812,12 @@ function make_code!(func::FortranFunction,
         left_name = name_translation[left_tens]
         right_name = name_translation[right_tens]
 
+        scalar *= if !isempty(scalars)
+            prod(Sym(name_translation[s]) for s in scalars)
+        else
+            1
+        end
+
         if isempty(left_exinds) && isempty(continds)
             name_translation[(nameout, outorder)] = right_name
             scalar *= Sym(left_name)
@@ -835,11 +844,7 @@ function make_code!(func::FortranFunction,
 
             out_name = get(name_translation, (nameout, outorder), output_name)
 
-            α = scalar * if !isempty(scalars)
-                prod(Sym(name_translation[s]) for s in scalars)
-            else
-                1
-            end
+            α = scalar
             scalar = 1
 
             β = allocating_output ? "zero" : "one"

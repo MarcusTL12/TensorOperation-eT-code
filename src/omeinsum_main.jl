@@ -262,3 +262,19 @@ end
 function test34()
     test_code(ein"ac,cjbi,kl,kl->aibj", ("X", ["v", "o", "v", "o"]))
 end
+
+function test35()
+    test_code(ein",,,,ai,aj->ij", ("X", ["o", "o"]))
+end
+
+function test36()
+    test_code(ein",,,,,ai->ia", ("X", ["o", "v"]))
+end
+
+function test36_5()
+    test_code(ein",,,,,ai->ai", ("X", ["v", "o"]))
+end
+
+function test37()
+    test_code(ein",,,,,->", ("X", String[]))
+end
