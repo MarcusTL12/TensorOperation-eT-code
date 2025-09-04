@@ -649,7 +649,7 @@ function make_code!(func::FortranFunction,
 
             println("Tracing      $((name1, collect(full_inds1))) -> $((name1, inds1))")
             old_name = name_translation[(name1, full_inds1)]
-            make_trace_code!(func, dimdict, old_name, full_inds1, intermediate_name, inds1, trace_inds1, true)
+            make_trace_code!(func, dimdict, old_name, full_inds1, intermediate_name, inds1, trace_inds1, true, 1)
         end
 
         tracing2 = false
@@ -667,7 +667,7 @@ function make_code!(func::FortranFunction,
 
             println("Tracing      $((name1, collect(full_inds2))) -> $((name1, inds2))")
             old_name = name_translation[(name2, full_inds2)]
-            make_trace_code!(func, dimdict, old_name, full_inds2, intermediate_name, inds2, trace_inds2, true)
+            make_trace_code!(func, dimdict, old_name, full_inds2, intermediate_name, inds2, trace_inds2, true, 1)
         end
 
         continds = intersect(inds1, inds2)
@@ -1169,7 +1169,7 @@ function make_eT_num_words(x)
 end
 
 function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
-    to_name, to_inds, trace_inds, set_zero)
+    to_name, to_inds, trace_inds, set_zero, prefactor)
     n_loop_indices = length(to_inds) + length(trace_inds)
 
     func.n_integers[] = max(func.n_integers[], n_loop_indices)
@@ -1256,7 +1256,13 @@ function make_trace_code!(func::FortranFunction, dimdict, from_name, from_inds,
 
     out_string = String(take!(out_string))
 
-    print(func.code_body, "   "^tab_level, "$out_string = $out_string + $from_name(")
+    if isone(prefactor)
+        print(func.code_body, "   "^tab_level, "$out_string = $out_string + $from_name(")
+    elseif isone(-prefactor)
+        print(func.code_body, "   "^tab_level, "$out_string = $out_string - $from_name(")
+    else
+        print(func.code_body, "   "^tab_level, "$out_string = $out_string + $(make_eT_num(prefactor)) * $from_name(")
+    end
 
     isfirst = true
     for i in input_inds
@@ -1462,7 +1468,7 @@ function make_single_tensor_code!(func::FortranFunction, code, name,
     end
 
     make_trace_code!(func, dimdict, name[1], from_inds, func.output_param[1],
-        to_inds, trace_inds, false)
+        to_inds, trace_inds, false, prefactor)
 end
 
 function update_code!(func::FortranFunction, code, prefactor, names_perms,
