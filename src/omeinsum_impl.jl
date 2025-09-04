@@ -1458,8 +1458,6 @@ function make_single_tensor_code!(func::FortranFunction, code, name,
 
     inds, trace_inds = partition_trace_inds(from_inds)
 
-    @assert to_inds == inds "Needs to sort trace"
-
     if name[2]
         dims = get_dims(dimdict, from_inds)
         if (name[1], dims) ∉ func.input_parameters
@@ -1467,7 +1465,42 @@ function make_single_tensor_code!(func::FortranFunction, code, name,
         end
     end
 
-    make_trace_code!(func, dimdict, name[1], from_inds, func.output_param[1],
+    outname = func.output_param[1]
+
+    if isempty(trace_inds)
+        outdims = get_dims(dimdict, to_inds)
+        return if to_inds == inds
+            println("Output is scaled input (in trace code)")
+            if !isempty(inds)
+                dimstr = get_compact_dimstr(outdims)
+                println(func.code_body,
+                    "      call daxpy($dimstr, $(make_eT_num(prefactor)), $(name[1]), 1, $outname, 1)")
+            else
+                if isone(prefactor)
+                    println(func.code_body,
+                        "      $outname = $outname + $(name[1])")
+                elseif isone(-prefactor)
+                    println(func.code_body,
+                        "      $outname = $outname - $(name[1])")
+                else
+                    println(func.code_body,
+                        "      $outname = $outname + $(make_eT_num(prefactor)) * $(name[1])")
+                end
+            end
+        else
+            outperm = get_permutation(to_inds, inds)
+
+            println("Sorting      $((outname, inds)) -> $((outname, to_inds))")
+            println(func.code_body,
+                "      call add_$(prod(string, invperm(outperm)))_to_\
+                $(prod(string, 1:length(outperm)))($(make_eT_num(prefactor)), $(name[1]), \
+                $outname, $(get_dimstr(outdims)))")
+        end
+    end
+
+    @assert to_inds == inds "Needs to sort trace"
+
+    make_trace_code!(func, dimdict, name[1], from_inds, outname,
         to_inds, trace_inds, false, prefactor)
 end
 
